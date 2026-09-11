@@ -9,6 +9,8 @@ const JUNIORTER_PROVIDERS = [
   'audiobookbay', 'academictorrents'
 ].join(',');
 
+const KNABEN_API = 'https://api.knaben.org/v1';
+
 export async function onRequest(context) {
   const { request, waitUntil } = context;
   const url = new URL(request.url);
@@ -16,7 +18,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -50,6 +52,12 @@ export async function onRequest(context) {
       tasks.push({
         name: 'cilibaike',
         promise: fetchFromCilibaike(query, page, sort, request, waitUntil),
+      });
+    }
+    if (sources.includes('knaben')) {
+      tasks.push({
+        name: 'knaben',
+        promise: fetchFromKnaben(query, page, sort, waitUntil),
       });
     }
 
@@ -112,6 +120,105 @@ function simplifyMagnet(magnet) {
   return magnet;
 }
 
+// ========== 字节转可读格式 ==========
+function formatBytes(bytes) {
+  if (!bytes || bytes <= 0) return '';
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const value = bytes / Math.pow(1024, i);
+  return `${value.toFixed(2)} ${units[i]}`;
+}
+
+// ========== Knaben 数据源（API） ==========
+async function fetchFromKnaben(query, page, sort, waitUntil) {
+  const size = 100;
+  const from = (page - 1) * size;
+
+  // 排序映射
+  let orderBy = 'seeders';
+  switch (sort) {
+    case 'length': orderBy = 'bytes'; break;
+    case 'time':
+    case 'newest': orderBy = 'date'; break;
+    case 'requests': orderBy = 'peers'; break;
+    case 'relevance':
+    default: orderBy = 'seeders'; break;
+  }
+
+  const body = {
+    search_type: '100%',
+    search_field: 'title',
+    query: query,
+    order_by: orderBy,
+    order_direction: 'desc',
+    from: from,
+    size: size,
+    hide_unsafe: true,
+    hide_xxx: false,
+  };
+
+  const cacheKey = new Request(`knaben:${query}:${page}:${sort}`, { method: 'GET' });
+  const cache = caches.default;
+
+  let response = await cache.match(cacheKey);
+  if (!response) {
+    response = await fetch(KNABEN_API, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/json',
+        'Origin': 'https://knaben.xyz',
+        'Referer': 'https://knaben.xyz/',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!response.ok) {
+      throw new Error(`Knaben HTTP ${response.status}`);
+    }
+
+    const cloned = response.clone();
+    const text = await cloned.text();
+    const cacheResponse = new Response(text, {
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'public, max-age=1800',
+      },
+    });
+    if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
+    else await cache.put(cacheKey, cacheResponse);
+  }
+
+  const data = await response.json();
+  return parseKnabenResults(data);
+}
+
+function parseKnabenResults(data) {
+  const items = [];
+  const hits = data.hits || [];
+
+  for (const hit of hits) {
+    if (!hit.title) continue;
+
+    const magnet = hit.magnetUrl ? simplifyMagnet(hit.magnetUrl) : (hit.hash ? `magnet:?xt=urn:btih:${hit.hash}` : '');
+    if (!magnet) continue;
+
+    items.push({
+      name: hit.title,
+      size: formatBytes(hit.bytes),
+      date: hit.date ? hit.date.slice(0, 10) : '',
+      seeds: hit.seeders || 0,
+      peers: hit.peers || 0,
+      magnet: magnet,
+      detailUrl: hit.details || '',
+      source: 'knaben',
+    });
+  }
+
+  return items;
+}
+
 // ========== 读取 domains.json ==========
 async function getDomainsConfig(request) {
   try {
@@ -140,8 +247,6 @@ async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
     return [];
   }
 
-  // 排序映射：cilibaike 的 order 参数
-  // 0=相关度, 1=体积最大, 2=最新添加, 3=热度, 4=最近发现
   let order = '0';
   switch (sort) {
     case 'length': order = '1'; break;
@@ -152,8 +257,6 @@ async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
     default: order = '0'; break;
   }
 
-  // 搜索 URL 格式：/search-关键词-分类-排序-页码.html
-  // 分类 0 = 全部
   const searchPath = `/search-${encodeURIComponent(query)}-0-${order}-${page}.html`;
 
   for (const domain of domains) {
@@ -161,9 +264,7 @@ async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
       const searchUrl = `${domain}${searchPath}?lang=zh_CN`;
       const html = await fetchWithCache(searchUrl, 3600, waitUntil);
 
-      // 检查是否有结果
       if (!html.includes('resource-card')) {
-        console.warn(`Cilibaike domain ${domain} returned no results, trying next`);
         continue;
       }
 
@@ -183,27 +284,22 @@ async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
 function parseCilibaikeResults(html, domain) {
   const items = [];
 
-  // 每个结果是一个 article.resource-card
-  // 用 split 按起始标签切分
   const parts = html.split(/<article class="resource resource-card"[^>]*>/);
   for (let i = 1; i < parts.length; i++) {
     const block = parts[i];
 
-    // 标题和详情页路径：<h2><a href="/hash/<40位hash>.html">...</a></h2>
     const titleMatch = block.match(/<h2><a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a><\/h2>/);
     if (!titleMatch) continue;
 
     const detailPath = titleMatch[1];
     const infoHash = titleMatch[2];
     let name = titleMatch[3]
-      .replace(/<[^>]+>/g, '')     // 去掉标签
-      .replace(/\s+/g, ' ')         // 合并空白
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
       .trim();
-    // 去掉分类前缀，如 【影视】
     name = name.replace(/^【[^】]+】\s*/, '');
     if (!name) continue;
 
-    // 元信息：<div class="meta resource-meta">...</div>
     const metaMatch = block.match(/<div class="meta resource-meta">([\s\S]*?)<\/div>/);
     let size = '';
     let date = '';
