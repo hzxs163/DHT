@@ -3,14 +3,13 @@
 域名列表生成脚本
 1. 小草磁力：从 fwonggh/xccl 提取域名
 2. 磁力百科：从中转站页面提取 CONFIG，用算法算出子域名
-把可用的域名写入 domains.json
+把生成的域名写入 domains.json，验证交给 Workers 运行时做
 """
 
 import json
 import re
 import time
 import urllib.request
-import urllib.error
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -56,10 +55,10 @@ def extract_xiaocao_domains():
         domains.add(m)
 
     # 解码 unescape 的编码内容
+    from urllib.parse import unquote
     unescape_matches = re.findall(r'unescape\("([^"]+)"\)', content)
     for encoded in unescape_matches:
         try:
-            from urllib.parse import unquote
             decoded = unquote(encoded)
             for m in re.findall(r'https://www\.xccl\d+\.xyz', decoded):
                 domains.add(m)
@@ -87,13 +86,9 @@ def extract_cilibaike_config(html):
 
     try:
         # 把 JS 对象字面量转成 JSON
-        # 1. 给没有引号的 key 加引号
         js_obj = re.sub(r'(\w+)\s*:', r'"\1":', js_obj)
-        # 2. 单引号转双引号
         js_obj = js_obj.replace("'", '"')
-        # 3. 去掉末尾可能多余的逗号
         js_obj = re.sub(r',\s*\}', '}', js_obj)
-        # 4. 去掉注释
         js_obj = re.sub(r'//[^\n]*', '', js_obj)
 
         config = json.loads(js_obj)
@@ -166,22 +161,6 @@ def get_cilibaike_domains():
     return build_cilibaike_domains(config)
 
 
-def verify_domain(url):
-    """验证域名是否可用（返回 True 表示可用）"""
-    try:
-        req = urllib.request.Request(url, headers=HEADERS)
-        with urllib.request.urlopen(req, timeout=10) as resp:
-            if resp.status != 200:
-                return False
-            text = resp.read().decode('utf-8', errors='replace')
-            # 检查页面特征
-            if '磁力百科' in text or 'search' in text.lower() or 'resource-card' in text:
-                return True
-            return False
-    except Exception:
-        return False
-
-
 def main():
     result = {
         'updated_at': datetime.now(timezone.utc).isoformat(),
@@ -189,25 +168,13 @@ def main():
         'cilibaike': [],
     }
 
-    # 小草磁力：只提取，不验证（Workers 运行时验证）
+    # 小草磁力：只提取，不验证
     xiaocao_domains = extract_xiaocao_domains()
     result['xiaocao'] = xiaocao_domains
 
-    # 磁力百科：提取 + 生成 + 验证
+    # 磁力百科：只生成，不验证
     cilibaike_domains = get_cilibaike_domains()
-    if cilibaike_domains:
-        print('[磁力百科] 验证域名可用性...')
-        available = []
-        for url in cilibaike_domains:
-            if verify_domain(url):
-                print(f'  [✓] {url}')
-                available.append(url)
-            else:
-                print(f'  [×] {url}')
-                time.sleep(0.3)
-        result['cilibaike'] = available
-    else:
-        result['cilibaike'] = []
+    result['cilibaike'] = cilibaike_domains
 
     OUTPUT_FILE.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),
@@ -218,6 +185,10 @@ def main():
     print(f'已写入 {OUTPUT_FILE}')
     print(f'  小草磁力: {len(result["xiaocao"])} 个')
     print(f'  磁力百科: {len(result["cilibaike"])} 个')
+    if result['cilibaike']:
+        print('  磁力百科域名:')
+        for d in result['cilibaike']:
+            print(f'    - {d}')
 
 
 if __name__ == '__main__':
