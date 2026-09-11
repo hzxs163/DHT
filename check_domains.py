@@ -7,8 +7,10 @@
 把生成的域名写入 domains.json，验证交给 Workers 运行时做
 """
 
+import base64
 import json
 import re
+import ssl
 import time
 import urllib.request
 from datetime import datetime, timezone
@@ -173,50 +175,88 @@ def get_cilibaike_domains():
 
 # ========== 虎风域名提取 ==========
 def extract_hufeng_domains():
-    """请求永久入口 ddcl.me / cltt.me，跟随跳转，提取当前真实落地域名"""
+    """
+    虎风永久入口 ddcl.me / cltt.me 是三层 JS 混淆跳转：
+      1. 入口页返回一段 JS，用 atob() 藏 api.JS 的域名后缀
+      2. 请求 https://gn{月日}{后缀}/api.JS?1, 拿到第二段 JS
+      3. 第二段 JS 里再用 atob() 藏落地域名（用 | 代替 .）
+    这里一步步模拟，最终解出落地域名。
+    """
     domains = set()
+
+    # cltt.me 是自签证书，忽略校验
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+
+    browser_headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': '*/*',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+    }
+
+    # 与入口页 getRL() 一致：月+日，9月11日 → "911"
+    now = datetime.now()
+    zz_sub = f'{now.month}{now.day}'
 
     for entry in HUFENG_ENTRY_URLS:
         print(f'[虎风] 请求入口: {entry}')
         try:
-            req = urllib.request.Request(entry, headers=HEADERS)
-            with urllib.request.urlopen(req, timeout=15) as resp:
-                final_url = resp.geturl()
+            req = urllib.request.Request(entry, headers={**browser_headers, 'Referer': entry + '/'})
+            with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
                 html = resp.read().decode('utf-8', errors='replace')
+            print(f'[虎风] 入口页面长度: {len(html)}')
 
-            print(f'[虎风] 最终 URL: {final_url}')
+            # 从入口 HTML 里解出 api.JS 的域名后缀
+            api_suffixes = []
+            for b64 in re.findall(r'atob\([\'"]([^\'"]+)[\'"]\)', html):
+                try:
+                    decoded = base64.b64decode(b64).decode('utf-8', errors='replace')
+                    api_suffixes.append(decoded)
+                except Exception:
+                    pass
 
-            # 1) urllib 跟随 302 后的最终 URL
-            m = re.match(r'(https?://[^/]+)', final_url)
-            if m:
-                domains.add(m.group(1))
+            print(f'[虎风] 解出的 api 后缀: {api_suffixes}')
 
-            # 2) HTML 里 location.href / window.location 跳转
-            for m in re.findall(
-                r'''(?:location\.href|window\.location(?:\.href)?)\s*=\s*["']([^"']+)["']''',
-                html
-            ):
-                mm = re.match(r'(https?://[^/]+)', m)
-                if mm:
-                    domains.add(mm.group(1))
+            for suffix in api_suffixes:
+                api_url = f'https://gn{zz_sub}{suffix}/api.JS?1,'
+                print(f'[虎风] 请求 api.JS: {api_url}')
+                try:
+                    req2 = urllib.request.Request(api_url, headers={**browser_headers, 'Referer': entry + '/'})
+                    with urllib.request.urlopen(req2, timeout=20, context=ctx) as resp2:
+                        js = resp2.read().decode('utf-8', errors='replace')
+                    print(f'[虎风] api.JS 返回长度: {len(js)}')
 
-            # 3) meta refresh 跳转
-            for m in re.findall(r'content=["\'][^"\']*url=([^"\'\s]+)', html, re.I):
-                mm = re.match(r'(https?://[^/]+)', m)
-                if mm:
-                    domains.add(mm.group(1))
+                    # 从 api.JS 里解出 atob base64，把 | 换成 .
+                    for b64 in re.findall(r'atob\([\'"]([^\'"]+)[\'"]\)', js):
+                        try:
+                            decoded = base64.b64decode(b64).decode('utf-8', errors='replace')
+                            decoded = decoded.replace('|', '.')
+                            # 提取 https://xxx 形式域名
+                            for m in re.findall(r'https?://[a-z0-9.-]+\.[a-z]{2,}', decoded, re.I):
+                                host = m.split('//')[1].lower()
+                                if 'gn' == host[:2] or 'jumpcdn' in host:
+                                    continue
+                                domains.add(m)
+                        except Exception:
+                            pass
 
-            # 4) 页面里出现的 hufeng 域名
-            for m in HUFENG_DOMAIN_RE.findall(html):
-                domains.add(m)
+                    # 额外兜底：直接对 api.JS 原文跑一次 hufeng 特征
+                    for m in HUFENG_DOMAIN_RE.findall(js):
+                        domains.add(m)
+
+                except Exception as e:
+                    print(f'[虎风] api.JS 请求失败: {e}')
 
         except Exception as e:
             print(f'[虎风] 入口 {entry} 失败: {e}')
 
-    # 去掉入口域名本身
+    # 去掉入口域名和 api 中转域名
     result = sorted(
         d for d in domains
         if not any(entry_host in d for entry_host in HUFENG_ENTRY_URLS)
+        and 'jumpcdn' not in d
+        and 'xn-r8s65df7admf92a' not in d
     )
     print(f'[虎风] 提取到 {len(result)} 个落地域名')
     for d in result:
