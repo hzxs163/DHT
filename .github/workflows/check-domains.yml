@@ -1,14 +1,14 @@
-name: Check Xiaocao Domains
+name: Update Xiaocao Domains
 
 on:
-  # 每天 UTC 0 点运行一次（北京时间 8 点）
   schedule:
+    # 每天 UTC 0 点运行一次（北京时间 8 点）
     - cron: '0 0 * * *'
   # 允许手动触发
   workflow_dispatch:
 
 jobs:
-  check:
+  update:
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: pip install requests
 
-      - name: Run domain check
+      - name: Extract domains
         run: python check_domains.py
 
       - name: Commit and push if changed
@@ -36,6 +36,6 @@ jobs:
           if git diff --staged --quiet; then
             echo "domains.json 没有变化，跳过提交"
           else
-            git commit -m "chore: update available xiaocao domains"
+            git commit -m "chore: update xiaocao domains"
             git push
           fi
