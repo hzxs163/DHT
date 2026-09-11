@@ -20,7 +20,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage,hufeng';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -49,6 +49,9 @@ export async function onRequest(context) {
     }
     if (sources.includes('yuhuage')) {
       tasks.push({ name: 'yuhuage', promise: fetchFromYuhuage(query, page, sort, waitUntil) });
+    }
+    if (sources.includes('hufeng')) {
+      tasks.push({ name: 'hufeng', promise: fetchFromHufeng(query, page, sort, request, waitUntil) });
     }
 
     const results = await Promise.allSettled(tasks.map(t => t.promise));
@@ -201,12 +204,13 @@ async function getDomainsConfig(request) {
       return {
         xiaocao: Array.isArray(data.xiaocao) ? data.xiaocao : [],
         cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
+        hufeng: Array.isArray(data.hufeng) ? data.hufeng : [],
       };
     }
   } catch (err) {
     console.error('Failed to load domains.json:', err);
   }
-  return { xiaocao: [], cilibaike: [] };
+  return { xiaocao: [], cilibaike: [], hufeng: [] };
 }
 
 // ========== 磁力百科 ==========
@@ -520,6 +524,82 @@ function parseYuhuageResults(html) {
       magnet: `magnet:?xt=urn:btih:${infoHash}`,
       detailUrl: `${YUHUAGE_API}/hash/${infoHash}.html`,
       source: 'yuhuage',
+    });
+  }
+
+  return items;
+}
+
+// ========== 虎风 ==========
+async function fetchFromHufeng(query, page, sort, request, waitUntil) {
+  const config = await getDomainsConfig(request);
+  const domains = config.hufeng;
+  if (domains.length === 0) {
+    console.warn('Hufeng: no available domains');
+    return [];
+  }
+
+  // 排序映射：ctime / length / click
+  let sortParam = 'ctime';
+  switch (sort) {
+    case 'length': sortParam = 'length'; break;
+    case 'requests': sortParam = 'click'; break;
+    case 'time':
+    case 'newest':
+    case 'relevance':
+    default: sortParam = 'ctime'; break;
+  }
+
+  for (const domain of domains) {
+    try {
+      const searchUrl = `${domain}/search/${encodeURIComponent(query)}_${sortParam}_${page}.html`;
+      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
+
+      if (!html.includes('class="result"')) continue;
+
+      const items = parseHufengResults(html, domain);
+      if (items.length > 0) {
+        console.log(`Hufeng using domain: ${domain}`);
+        return items;
+      }
+    } catch (err) {
+      console.error(`Hufeng domain ${domain} failed:`, err);
+    }
+  }
+  return [];
+}
+
+function parseHufengResults(html, domain) {
+  const items = [];
+
+  const parts = html.split(/<div class="result">/);
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+
+    const titleMatch = block.match(/<h3><a[^>]+href="\/([a-fA-F0-9]{40})\.html"[^>]*>([\s\S]*?)<\/a><\/h3>/);
+    if (!titleMatch) continue;
+
+    const infoHash = titleMatch[1];
+    let name = titleMatch[2]
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!name) continue;
+
+    const dateMatch = block.match(/时间：([^<]+)<\/span>/);
+    const sizeMatch = block.match(/大小：([^<]+)<\/span>/);
+
+    items.push({
+      name,
+      size: sizeMatch ? sizeMatch[1].trim() : '',
+      date: dateMatch ? dateMatch[1].trim() : '',
+      magnet: `magnet:?xt=urn:btih:${infoHash}`,
+      detailUrl: `${domain}/${infoHash}.html`,
+      source: 'hufeng',
     });
   }
 
