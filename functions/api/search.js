@@ -29,7 +29,7 @@ export async function onRequest(context) {
     if (sources.includes('xiaocao')) {
       tasks.push({
         name: 'xiaocao',
-        promise: fetchFromXiaocao(query, page, waitUntil),
+        promise: fetchFromXiaocao(query, page, sort, request, waitUntil),
       });
     }
 
@@ -80,6 +80,30 @@ export async function onRequest(context) {
     console.error('Search error:', err);
     return jsonResponse({ error: 'Search failed', detail: String(err) }, 502);
   }
+}
+
+// ========== 读取小草磁力可用域名 ==========
+async function getXiaocaoDomains(request, waitUntil) {
+  try {
+    // 读取根目录的 domains.json（Pages 会把它作为静态资源）
+    const domainsUrl = new URL('/domains.json', request.url);
+    const res = await fetch(domainsUrl.toString());
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.available) && data.available.length > 0) {
+        return data.available;
+      }
+    }
+  } catch (err) {
+    console.error('Failed to load domains.json:', err);
+  }
+
+  // 兜底：如果 domains.json 读不到，用硬编码列表
+  return [
+    'https://www.xccl264.xyz',
+    'https://www.xccl268.xyz',
+    'https://www.xccl267.xyz',
+  ];
 }
 
 // ========== ØMagnet 数据源 ==========
@@ -169,14 +193,45 @@ function extractMagnetFrom0Magnet(html) {
 }
 
 // ========== 小草磁力数据源 ==========
-async function fetchFromXiaocao(query, page, waitUntil) {
-  const searchUrl = `https://www.xccl261.xyz/search/kw-${encodeURIComponent(query)}-${page}.html`;
-  const html = await fetchWithCache(searchUrl, 3600, waitUntil);
-
-  return parseXiaocaoResults(html);
+function getXiaocaoSortPath(sort) {
+  switch (sort) {
+    case 'length': return '-length';
+    case 'time': return '-time';
+    case 'requests': return '-requests';
+    case 'relevance':
+    default: return '';
+  }
 }
 
-function parseXiaocaoResults(html) {
+async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
+  const domains = await getXiaocaoDomains(request, waitUntil);
+  const sortPath = getXiaocaoSortPath(sort);
+
+  for (const domain of domains) {
+    try {
+      const searchUrl = `${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`;
+      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
+
+      // 如果页面里没有 search-item，说明这个域名可能失效了，试下一个
+      if (!html.includes('search-item')) {
+        console.warn(`Xiaocao domain ${domain} returned no search-item, trying next`);
+        continue;
+      }
+
+      const items = parseXiaocaoResults(html, domain);
+      if (items.length > 0) {
+        console.log(`Xiaocao using domain: ${domain}`);
+        return items;
+      }
+    } catch (err) {
+      console.error(`Xiaocao domain ${domain} failed:`, err);
+    }
+  }
+
+  return [];
+}
+
+function parseXiaocaoResults(html, domain) {
   const items = [];
 
   // 用 split 按 search-item 的起始标签切分，每段就是一个结果块
@@ -207,7 +262,7 @@ function parseXiaocaoResults(html) {
       date: dateMatch ? dateMatch[1].trim() : '',
       hot: hotMatch ? hotMatch[1].trim() : '',
       magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `https://www.xccl261.xyz${detailPath}`,
+      detailUrl: `${domain}${detailPath}`,
       source: 'xiaocao',
     });
   }
