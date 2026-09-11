@@ -87,12 +87,15 @@
     .source-btn .arrow { font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; }
     .source-btn.open .arrow { transform: rotate(180deg); }
 
+    /* ---------- 优化后的源下拉菜单 ---------- */
     .source-menu {
       display: none;
       position: absolute;
       top: calc(100% + 6px);
       left: 0;
-      min-width: 160px;
+      min-width: 200px;
+      max-height: 60vh;
+      overflow-y: auto;
       padding: 6px 0;
       background: var(--bg);
       border: 1px solid var(--border);
@@ -102,6 +105,23 @@
     }
 
     .source-menu.open { display: block; }
+
+    .source-menu-actions {
+      display: flex;
+      justify-content: space-between;
+      padding: 4px 14px 8px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+    }
+
+    .source-menu-actions a {
+      font-size: 12px;
+      color: var(--accent);
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .source-menu-actions a:hover { text-decoration: underline; }
 
     .source-option {
       display: flex;
@@ -116,15 +136,33 @@
 
     .source-option:hover { background: #f8f9fa; }
 
+    .source-option:has(input:checked) {
+      background: #e8f0fe;
+    }
+
+    .source-option:has(input:checked):hover {
+      background: #d2e3fc;
+    }
+
     .source-option input[type="checkbox"] {
       cursor: pointer;
       accent-color: var(--accent);
       width: 15px;
       height: 15px;
+      flex-shrink: 0;
     }
 
     .source-option span { user-select: none; }
 
+    .source-option:has(input:checked)::after {
+      content: "✓";
+      margin-left: auto;
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    /* ---------- 搜索框 ---------- */
     .search-input-wrap { flex: 1; position: relative; }
 
     .search-input {
@@ -240,7 +278,7 @@
       border-radius: 10px;
     }
 
-    /* ---------- 磁力行（现在是 <a>） ---------- */
+    /* ---------- 磁力行 ---------- */
     .magnet-row {
       display: flex;
       align-items: center;
@@ -283,7 +321,6 @@
       white-space: nowrap;
     }
 
-    /* 手机端显示“长按复制”，桌面端隐藏 */
     @media (min-width: 769px) {
       .magnet-copy-hint { display: none; }
     }
@@ -422,16 +459,20 @@
     <form class="search-form" id="searchForm">
       <div class="source-dropdown" id="sourceDropdown">
         <button type="button" class="source-btn" id="sourceBtn">
-          <span id="sourceLabel">全部源</span>
+          <span id="sourceLabel">Juniorter</span>
           <span class="arrow">▼</span>
         </button>
         <div class="source-menu" id="sourceMenu">
+          <div class="source-menu-actions">
+            <a href="javascript:void(0)" id="selectAllSources">全选</a>
+            <a href="javascript:void(0)" id="clearAllSources">清空</a>
+          </div>
           <label class="source-option">
-            <input type="checkbox" value="0magnet" checked>
+            <input type="checkbox" value="0magnet">
             <span>ØMagnet</span>
           </label>
           <label class="source-option">
-            <input type="checkbox" value="xiaocao" checked>
+            <input type="checkbox" value="xiaocao">
             <span>小草磁力</span>
           </label>
           <label class="source-option">
@@ -439,19 +480,19 @@
             <span>Juniorter</span>
           </label>
           <label class="source-option">
-            <input type="checkbox" value="cilibaike" checked>
+            <input type="checkbox" value="cilibaike">
             <span>磁力百科</span>
           </label>
           <label class="source-option">
-            <input type="checkbox" value="knaben" checked>
+            <input type="checkbox" value="knaben">
             <span>Knaben</span>
           </label>
           <label class="source-option">
-            <input type="checkbox" value="yuhuage" checked>
+            <input type="checkbox" value="yuhuage">
             <span>雨花阁</span>
           </label>
           <label class="source-option">
-            <input type="checkbox" value="hufeng" checked>
+            <input type="checkbox" value="hufeng">
             <span>虎风</span>
           </label>
         </div>
@@ -492,6 +533,9 @@
   <script>
     const API_BASE = '';
 
+    // ---------- 默认勾选的源 ----------
+    const DEFAULT_SOURCES = ['juniorter'];
+
     const header = document.getElementById('header');
     const searchForm = document.getElementById('searchForm');
     const searchInput = document.getElementById('searchInput');
@@ -509,6 +553,15 @@
     let currentSort = 'newest';
     let isLoading = false;
 
+    // ---------- 初始化：按 DEFAULT_SOURCES 勾选 ----------
+    (function initSources() {
+      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
+      checkboxes.forEach(c => {
+        c.checked = DEFAULT_SOURCES.includes(c.value);
+      });
+      updateSourceLabel();
+    })();
+
     // ---------- 数据源下拉交互 ----------
     sourceBtn.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -524,6 +577,19 @@
     });
 
     sourceMenu.addEventListener('change', () => {
+      updateSourceLabel();
+    });
+
+    // 全选 / 清空
+    document.getElementById('selectAllSources').addEventListener('click', (e) => {
+      e.preventDefault();
+      sourceMenu.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = true);
+      updateSourceLabel();
+    });
+
+    document.getElementById('clearAllSources').addEventListener('click', (e) => {
+      e.preventDefault();
+      sourceMenu.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = false);
       updateSourceLabel();
     });
 
@@ -716,7 +782,6 @@
         row.addEventListener('touchmove', cancel, { passive: true });
         row.addEventListener('touchcancel', cancel);
 
-        // 桌面端右键复制
         row.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           copyMagnetRow(row);
