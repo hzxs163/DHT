@@ -178,13 +178,11 @@ def extract_hufeng_domains():
     """
     虎风永久入口 ddcl.me / cltt.me 是三层 JS 混淆跳转：
       1. 入口页返回一段 JS，用 atob() 藏 api.JS 的域名后缀
-      2. 请求 https://gn{月日}{后缀}/api.JS?1, 拿到第二段 JS
+      2. 请求 https://gn{月日}{后缀}/api.JS?1,{base64(入口URL)} 拿到第二段 JS
       3. 第二段 JS 里再用 atob() 藏落地域名（用 | 代替 .）
-    这里一步步模拟，最终解出落地域名。
     """
     domains = set()
 
-    # cltt.me 是自签证书，忽略校验
     ctx = ssl.create_default_context()
     ctx.check_hostname = False
     ctx.verify_mode = ssl.CERT_NONE
@@ -195,9 +193,8 @@ def extract_hufeng_domains():
         'Accept-Language': 'zh-CN,zh;q=0.9',
     }
 
-    # 与入口页 getRL() 一致：月+日，9月11日 → "911"
     now = datetime.now()
-    zz_sub = f'{now.month}{now.day}'
+    zz_sub = f'{now.month}{now.day}'  # 9月11日 → "911"
 
     for entry in HUFENG_ENTRY_URLS:
         print(f'[虎风] 请求入口: {entry}')
@@ -207,7 +204,8 @@ def extract_hufeng_domains():
                 html = resp.read().decode('utf-8', errors='replace')
             print(f'[虎风] 入口页面长度: {len(html)}')
 
-            # 从入口 HTML 里解出 api.JS 的域名后缀
+            entry_b64 = base64.b64encode(entry.encode()).decode()
+
             api_suffixes = []
             for b64 in re.findall(r'atob\([\'"]([^\'"]+)[\'"]\)', html):
                 try:
@@ -219,29 +217,27 @@ def extract_hufeng_domains():
             print(f'[虎风] 解出的 api 后缀: {api_suffixes}')
 
             for suffix in api_suffixes:
-                api_url = f'https://gn{zz_sub}{suffix}/api.JS?1,'
+                api_url = f'https://gn{zz_sub}{suffix}/api.JS?1,{entry_b64}'
                 print(f'[虎风] 请求 api.JS: {api_url}')
                 try:
                     req2 = urllib.request.Request(api_url, headers={**browser_headers, 'Referer': entry + '/'})
                     with urllib.request.urlopen(req2, timeout=20, context=ctx) as resp2:
                         js = resp2.read().decode('utf-8', errors='replace')
                     print(f'[虎风] api.JS 返回长度: {len(js)}')
+                    print(f'[虎风] api.JS 返回开头: {js[:200]}')
 
-                    # 从 api.JS 里解出 atob base64，把 | 换成 .
                     for b64 in re.findall(r'atob\([\'"]([^\'"]+)[\'"]\)', js):
                         try:
                             decoded = base64.b64decode(b64).decode('utf-8', errors='replace')
                             decoded = decoded.replace('|', '.')
-                            # 提取 https://xxx 形式域名
                             for m in re.findall(r'https?://[a-z0-9.-]+\.[a-z]{2,}', decoded, re.I):
                                 host = m.split('//')[1].lower()
-                                if 'gn' == host[:2] or 'jumpcdn' in host:
+                                if host.startswith('gn') or 'jumpcdn' in host or 'xn--r8s65df7admf92a' in host:
                                     continue
                                 domains.add(m)
                         except Exception:
                             pass
 
-                    # 额外兜底：直接对 api.JS 原文跑一次 hufeng 特征
                     for m in HUFENG_DOMAIN_RE.findall(js):
                         domains.add(m)
 
@@ -251,12 +247,11 @@ def extract_hufeng_domains():
         except Exception as e:
             print(f'[虎风] 入口 {entry} 失败: {e}')
 
-    # 去掉入口域名和 api 中转域名
     result = sorted(
         d for d in domains
         if not any(entry_host in d for entry_host in HUFENG_ENTRY_URLS)
         and 'jumpcdn' not in d
-        and 'xn-r8s65df7admf92a' not in d
+        and 'xn--r8s65df7admf92a' not in d
     )
     print(f'[虎风] 提取到 {len(result)} 个落地域名')
     for d in result:
