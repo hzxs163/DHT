@@ -157,7 +157,10 @@ async function fetchFromKnaben(query, page, sort, waitUntil) {
     hide_xxx: false,
   };
 
-  const cacheKey = new Request(`knaben:${query}:${page}:${sort}`, { method: 'GET' });
+  const cacheKey = new Request(
+  `https://knaben-cache.local/?q=${encodeURIComponent(query)}&page=${page}&sort=${sort}`,
+  { method: 'GET' }
+);
   const cache = caches.default;
 
   let response = await cache.match(cacheKey);
