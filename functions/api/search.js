@@ -4,6 +4,30 @@ export async function onRequest(context) {
   const { request, waitUntil } = context;
   const url = new URL(request.url);
   const query = url.searchParams.get('q');
+
+  // ===== 临时测试：直接看吴签磁力返回了什么 =====
+  if (url.searchParams.get('test') === 'wuqian') {
+    const res = await fetch('https://wuqianto.cc/search?keyword=%E6%AF%92%E6%B6%B2', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+        'Referer': 'https://wuqianto.cc/',
+      },
+    });
+    const html = await res.text();
+    return jsonResponse({
+      status: res.status,
+      length: html.length,
+      hasPanel: html.includes('panel panel-default'),
+      hasDetail: html.includes('/detail/'),
+      hasSearchForm: html.includes('search-form'),
+      hasChallenge: html.includes('Checking your browser'),
+      preview: html.substring(0, 500),
+    });
+  }
+  // ===== 测试结束 =====
+
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
@@ -39,6 +63,7 @@ export async function onRequest(context) {
     for (const item of allItems) {
       // 跳过吴签磁力的调试标记项
       if (item.name === '__WUQIAN_CHALLENGE__') continue;
+      if (item.name && item.name.startsWith('__WUQIAN_NO_PANEL__')) continue;
 
       const hashMatch = item.magnet && item.magnet.match(/btih:([a-zA-Z0-9]{32})/);
       const key = hashMatch ? hashMatch[1].toLowerCase() : item.name;
@@ -50,9 +75,15 @@ export async function onRequest(context) {
 
     const timing = Date.now() - startTime;
 
-    // 检查吴签磁力是否被质询页拦住
     const wuqianChallenge = wuqianResult.status === 'fulfilled' &&
       wuqianResult.value.some(item => item.name === '__WUQIAN_CHALLENGE__');
+
+    const wuqianNoPanel = wuqianResult.status === 'fulfilled' &&
+      wuqianResult.value.some(item => item.name && item.name.startsWith('__WUQIAN_NO_PANEL__'));
+
+    const wuqianNoPanelInfo = wuqianResult.status === 'fulfilled'
+      ? (wuqianResult.value.find(item => item.name && item.name.startsWith('__WUQIAN_NO_PANEL__'))?.name || null)
+      : null;
 
     return jsonResponse({
       results: deduped,
@@ -64,6 +95,8 @@ export async function onRequest(context) {
         wuqianStatus: wuqianResult.status,
         wuqianCount: wuqianResult.status === 'fulfilled' ? wuqianResult.value.length : 0,
         wuqianChallenge: wuqianChallenge,
+        wuqianNoPanel: wuqianNoPanel,
+        wuqianNoPanelInfo: wuqianNoPanelInfo,
         wuqianError: wuqianResult.status === 'rejected' ? String(wuqianResult.reason) : null,
         totalBeforeDedup: allItems.length,
       },
@@ -177,14 +210,29 @@ async function fetchFromWuqian(query, waitUntil) {
 function parseWuqianResults(html) {
   const items = [];
 
-  // 匹配每个 panel 块（每个结果是一个 panel）
+  // 调试：先看 HTML 里有没有关键特征
+  const hasPanel = html.includes('panel panel-default');
+  const hasDetailLink = html.includes('/detail/');
+  const hasSearchForm = html.includes('search-form');
+
+  if (!hasPanel) {
+    return [{
+      name: `__WUQIAN_NO_PANEL__ len=${html.length} hasDetail=${hasDetailLink} hasSearchForm=${hasSearchForm}`,
+      size: '',
+      date: '',
+      magnet: '',
+      detailUrl: '',
+      source: 'wuqian',
+    }];
+  }
+
+  // 匹配每个 panel 块
   const panelRegex = /<div class="panel panel-default border-radius">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
   let panelMatch;
 
   while ((panelMatch = panelRegex.exec(html)) !== null) {
     const panel = panelMatch[1];
 
-    // 提取标题和详情页路径
     const titleMatch = panel.match(/<a href="(\/detail\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/);
     if (!titleMatch) continue;
 
@@ -192,21 +240,17 @@ function parseWuqianResults(html) {
     let name = titleMatch[2].replace(/<[^>]+>/g, '').trim();
     if (!name) continue;
 
-    // 从详情页路径提取 Base32 info_hash：/detail/BC6A9/HfhXBaKe3zyHlm7vB0jTL3lUmuK
     const hashMatch = detailPath.match(/\/detail\/[^/]+\/([a-zA-Z0-9]+)/);
     if (!hashMatch) continue;
     const infoHash = hashMatch[1];
 
-    // 提取文件大小、日期、文件数量
     const sizeMatch = panel.match(/文件大小:\s*<span>([^<]+)<\/span>/);
     const dateMatch = panel.match(/收录时间:\s*<span>([^<]+)<\/span>/);
-    const fileCountMatch = panel.match(/文件数量:\s*<span>([^<]+)<\/span>/);
 
     items.push({
       name,
       size: sizeMatch ? sizeMatch[1].trim() : '',
       date: dateMatch ? dateMatch[1].trim() : '',
-      fileCount: fileCountMatch ? fileCountMatch[1].trim() : '',
       magnet: `magnet:?xt=urn:btih:${infoHash}`,
       detailUrl: `https://wuqianto.cc${detailPath}`,
       source: 'wuqian',
@@ -235,7 +279,6 @@ async function fetchWithCache(url, ttl, waitUntil) {
 
   const html = await response.text();
 
-  // 只在 200 时缓存
   if (response.ok) {
     const cacheResponse = new Response(html, {
       headers: {
