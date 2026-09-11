@@ -7,6 +7,10 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
+  // 读取选中的源，默认全部
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao';
+  const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
+
   if (!query) {
     return jsonResponse({ error: 'Missing query parameter' }, 400);
   }
@@ -14,24 +18,39 @@ export async function onRequest(context) {
   const startTime = Date.now();
 
   try {
-    const [omagnetResult, xiaocaoResult] = await Promise.allSettled([
-      fetchFrom0Magnet(query, sort, waitUntil),
-      fetchFromXiaocao(query, page, waitUntil),
-    ]);
+    const tasks = [];
+
+    if (sources.includes('0magnet')) {
+      tasks.push({
+        name: '0magnet',
+        promise: fetchFrom0Magnet(query, sort, waitUntil),
+      });
+    }
+    if (sources.includes('xiaocao')) {
+      tasks.push({
+        name: 'xiaocao',
+        promise: fetchFromXiaocao(query, page, waitUntil),
+      });
+    }
+
+    const results = await Promise.allSettled(tasks.map(t => t.promise));
 
     const allItems = [];
+    const debug = {};
 
-    if (omagnetResult.status === 'fulfilled') {
-      allItems.push(...omagnetResult.value);
-    } else {
-      console.error('ØMagnet failed:', omagnetResult.reason);
-    }
-
-    if (xiaocaoResult.status === 'fulfilled') {
-      allItems.push(...xiaocaoResult.value);
-    } else {
-      console.error('Xiaocao failed:', xiaocaoResult.reason);
-    }
+    results.forEach((r, i) => {
+      const name = tasks[i].name;
+      if (r.status === 'fulfilled') {
+        allItems.push(...r.value);
+        debug[`${name}Status`] = 'fulfilled';
+        debug[`${name}Count`] = r.value.length;
+      } else {
+        console.error(`${name} failed:`, r.reason);
+        debug[`${name}Status`] = 'rejected';
+        debug[`${name}Count`] = 0;
+        debug[`${name}Error`] = String(r.reason);
+      }
+    });
 
     // 去重：优先按 info_hash，没有 hash 时按名称
     const seen = new Set();
@@ -51,12 +70,9 @@ export async function onRequest(context) {
       total: deduped.length,
       timing,
       debug: {
-        omagnetStatus: omagnetResult.status,
-        omagnetCount: omagnetResult.status === 'fulfilled' ? omagnetResult.value.length : 0,
-        xiaocaoStatus: xiaocaoResult.status,
-        xiaocaoCount: xiaocaoResult.status === 'fulfilled' ? xiaocaoResult.value.length : 0,
-        xiaocaoError: xiaocaoResult.status === 'rejected' ? String(xiaocaoResult.reason) : null,
+        sources: sources,
         totalBeforeDedup: allItems.length,
+        ...debug,
       },
     });
 
