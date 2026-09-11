@@ -107,12 +107,18 @@ async function batchFetchDetails(items, concurrency, waitUntil) {
 function extractMagnet(html) {
   const match = html.match(/id="input-magnet"[^>]*value="([^"]+)"/);
   if (match) {
-    return match[1]
+    const fullMagnet = match[1]
       .replace(/&amp;/g, '&')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>');
+
+    // 只保留 xt=urn:btih:... 这一段
+    const hashMatch = fullMagnet.match(/xt=urn:btih:([a-fA-F0-9]{40})/);
+    if (hashMatch) {
+      return `magnet:?xt=urn:btih:${hashMatch[1]}`;
+    }
   }
   return '';
 }
