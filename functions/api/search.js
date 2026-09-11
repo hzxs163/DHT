@@ -97,9 +97,18 @@ export async function onRequest(context) {
   }
 }
 
+// ========== 磁力链接简化 ==========
+function simplifyMagnet(magnet) {
+  if (!magnet) return '';
+  const match = magnet.match(/xt=urn:btih:([a-zA-Z0-9]{32,40})/i);
+  if (match) {
+    return `magnet:?xt=urn:btih:${match[1]}`;
+  }
+  return magnet;
+}
+
 // ========== Juniorter 数据源（API + SSE） ==========
 async function fetchFromJuniorter(query, page, sort, waitUntil) {
-  // Juniorter 的排序：seeds / date
   const juniorterSort = (sort === 'time' || sort === 'newest') ? 'date' : 'seeds';
 
   const apiUrl = `${JUNIORTER_API}?q=${encodeURIComponent(query)}&sort=${juniorterSort}&pageSize=50&providers=${encodeURIComponent(JUNIORTER_PROVIDERS)}`;
@@ -121,7 +130,6 @@ async function fetchFromJuniorter(query, page, sort, waitUntil) {
       throw new Error(`Juniorter HTTP ${response.status}`);
     }
 
-    // 克隆一份用于缓存
     const cloned = response.clone();
     const cacheResponse = new Response(await cloned.text(), {
       headers: {
@@ -150,7 +158,6 @@ function parseJuniorterSSE(text) {
     } else if (line.startsWith('data: ')) {
       currentData = line.slice(6);
     } else if (line === '' && currentEvent && currentData) {
-      // 一个事件结束
       if (currentEvent === 'provider') {
         try {
           const parsed = JSON.parse(currentData);
@@ -163,7 +170,7 @@ function parseJuniorterSSE(text) {
                   date: r.date ? r.date.slice(0, 10) : '',
                   seeds: r.seeds || 0,
                   peers: r.peers || 0,
-                  magnet: r.magnet,
+                  magnet: simplifyMagnet(r.magnet),
                   detailUrl: r.url || '',
                   source: 'juniorter',
                 });
