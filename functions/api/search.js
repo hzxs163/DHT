@@ -11,6 +11,9 @@ const JUNIORTER_PROVIDERS = [
 
 const KNABEN_API = 'https://api.knaben.org/v1';
 
+// 磁力多真实后端（从 wz.dobt.cc 混淆代码中解出）
+const CILIDUO_API = 'https://doc2.htomcdn.com:39988';
+
 export async function onRequest(context) {
   const { request, waitUntil } = context;
   const url = new URL(request.url);
@@ -18,7 +21,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,ciliduo';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -58,6 +61,12 @@ export async function onRequest(context) {
       tasks.push({
         name: 'knaben',
         promise: fetchFromKnaben(query, page, sort, waitUntil),
+      });
+    }
+    if (sources.includes('ciliduo')) {
+      tasks.push({
+        name: 'ciliduo',
+        promise: fetchFromCiliduo(query, page, sort, waitUntil),
       });
     }
 
@@ -571,6 +580,73 @@ function extractMagnetFrom0Magnet(html) {
   return '';
 }
 
+// ========== 磁力多数据源（wz.dobt.cc 真实后端） ==========
+async function fetchFromCiliduo(query, page, sort, waitUntil) {
+  // 排序映射：磁力多支持 viewnum / size / date
+  let sortParam = '';
+  switch (sort) {
+    case 'length': sortParam = 'size'; break;
+    case 'time':
+    case 'newest': sortParam = 'date'; break;
+    case 'requests': sortParam = 'viewnum'; break;
+    case 'relevance':
+    default: sortParam = ''; break;
+  }
+
+  const searchUrl = `${CILIDUO_API}/search?word=${encodeURIComponent(query)}&sort=${sortParam}&page=${page}`;
+
+  const html = await fetchWithCacheGBK(searchUrl, 3600, waitUntil);
+
+  if (!html.includes('ssbox')) {
+    return [];
+  }
+
+  return parseCiliduoResults(html);
+}
+
+function parseCiliduoResults(html) {
+  const items = [];
+
+  const parts = html.split(/<div class="ssbox">/);
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+
+    const titleMatch = block.match(/<h3>[\s\S]*?<a[^>]+href="(\/doc\/([a-fA-F0-9]{40}))"[^>]*>([\s\S]*?)<\/a><\/h3>/);
+    if (!titleMatch) continue;
+
+    const detailPath = titleMatch[1];
+    const infoHash = titleMatch[2];
+    let name = titleMatch[3]
+      .replace(/<[^>]+>/g, '')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!name) continue;
+
+    const magnetMatch = block.match(/href="(magnet:\?xt=urn:btih:[^"]+)"/i);
+    const magnet = magnetMatch ? simplifyMagnet(magnetMatch[1]) : `magnet:?xt=urn:btih:${infoHash}`;
+
+    const sizeMatch = block.match(/大小：\s*<b[^>]*>([^<]+)<\/b>/);
+    const dateMatch = block.match(/添加时间：\s*<b>([^<]+)<\/b>/);
+    const hotMatch = block.match(/热度：\s*<b>([^<]+)<\/b>/);
+
+    items.push({
+      name,
+      size: sizeMatch ? sizeMatch[1].trim() : '',
+      date: dateMatch ? dateMatch[1].trim() : '',
+      hot: hotMatch ? hotMatch[1].trim() : '',
+      magnet,
+      detailUrl: `${CILIDUO_API}${detailPath}`,
+      source: 'ciliduo',
+    });
+  }
+
+  return items;
+}
+
 // ========== 通用缓存与响应 ==========
 async function fetchWithCache(url, ttl, waitUntil) {
   const cache = caches.default;
@@ -590,6 +666,45 @@ async function fetchWithCache(url, ttl, waitUntil) {
   const html = await response.text();
 
   if (response.ok) {
+    const cacheResponse = new Response(html, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': `public, max-age=${ttl}`,
+      },
+    });
+    if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
+    else await cache.put(cacheKey, cacheResponse);
+  }
+
+  return html;
+}
+
+// GBK 抓取（专用于磁力多）
+async function fetchWithCacheGBK(url, ttl, waitUntil) {
+  const cache = caches.default;
+  const cacheKey = new Request(url, { method: 'GET' });
+
+  let response = await cache.match(cacheKey);
+  if (response) return response.text();
+
+  const res = await fetch(url, {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'zh-CN,zh;q=0.9',
+      'Referer': 'https://wz.dobt.cc/',
+    },
+  });
+
+  const buffer = await res.arrayBuffer();
+  let html;
+  try {
+    html = new TextDecoder('gbk').decode(buffer);
+  } catch (e) {
+    html = new TextDecoder('utf-8').decode(buffer);
+  }
+
+  if (res.ok) {
     const cacheResponse = new Response(html, {
       headers: {
         'Content-Type': 'text/html; charset=utf-8',
