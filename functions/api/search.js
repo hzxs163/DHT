@@ -14,7 +14,6 @@ export async function onRequest(context) {
   const startTime = Date.now();
 
   try {
-    // 多源并行抓取，用 allSettled 保证某个源挂了不影响整体
     const [omagnetResult, wuqianResult] = await Promise.allSettled([
       fetchFrom0Magnet(query, sort, waitUntil),
       fetchFromWuqian(query, waitUntil),
@@ -38,6 +37,9 @@ export async function onRequest(context) {
     const seen = new Set();
     const deduped = [];
     for (const item of allItems) {
+      // 跳过吴签磁力的调试标记项
+      if (item.name === '__WUQIAN_CHALLENGE__') continue;
+
       const hashMatch = item.magnet && item.magnet.match(/btih:([a-zA-Z0-9]{32})/);
       const key = hashMatch ? hashMatch[1].toLowerCase() : item.name;
       if (!seen.has(key)) {
@@ -47,15 +49,29 @@ export async function onRequest(context) {
     }
 
     const timing = Date.now() - startTime;
+
+    // 检查吴签磁力是否被质询页拦住
+    const wuqianChallenge = wuqianResult.status === 'fulfilled' &&
+      wuqianResult.value.some(item => item.name === '__WUQIAN_CHALLENGE__');
+
     return jsonResponse({
       results: deduped,
       total: deduped.length,
       timing,
+      debug: {
+        omagnetStatus: omagnetResult.status,
+        omagnetCount: omagnetResult.status === 'fulfilled' ? omagnetResult.value.length : 0,
+        wuqianStatus: wuqianResult.status,
+        wuqianCount: wuqianResult.status === 'fulfilled' ? wuqianResult.value.length : 0,
+        wuqianChallenge: wuqianChallenge,
+        wuqianError: wuqianResult.status === 'rejected' ? String(wuqianResult.reason) : null,
+        totalBeforeDedup: allItems.length,
+      },
     });
 
   } catch (err) {
     console.error('Search error:', err);
-    return jsonResponse({ error: 'Search failed' }, 502);
+    return jsonResponse({ error: 'Search failed', detail: String(err) }, 502);
   }
 }
 
@@ -150,10 +166,9 @@ async function fetchFromWuqian(query, waitUntil) {
   const searchUrl = `https://wuqianto.cc/search?keyword=${encodeURIComponent(query)}&sos=relevance&sofs=all&sot=all&soft=all&som=auto&p=1`;
   const html = await fetchWithCache(searchUrl, 3600, waitUntil);
 
-  // 如果返回的是 Cloudflare 质询页，直接放弃
+  // 检测 Cloudflare 质询页
   if (html.includes('Checking your browser') || html.includes('cf-browser-verification')) {
-    console.warn('Wuqian: hit Cloudflare challenge page');
-    return [];
+    return [{ name: '__WUQIAN_CHALLENGE__', size: '', date: '', magnet: '', detailUrl: '', source: 'wuqian' }];
   }
 
   return parseWuqianResults(html);
@@ -162,15 +177,14 @@ async function fetchFromWuqian(query, waitUntil) {
 function parseWuqianResults(html) {
   const items = [];
 
-  // 提取每个 .panel 块（每个结果是一个 panel）
-  // 用正则匹配从 panel-heading 到 panel-footer 的完整块
+  // 匹配每个 panel 块（每个结果是一个 panel）
   const panelRegex = /<div class="panel panel-default border-radius">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
   let panelMatch;
 
   while ((panelMatch = panelRegex.exec(html)) !== null) {
     const panel = panelMatch[1];
 
-    // 提取标题
+    // 提取标题和详情页路径
     const titleMatch = panel.match(/<a href="(\/detail\/[^"]+)"[^>]*>([\s\S]*?)<\/a>/);
     if (!titleMatch) continue;
 
@@ -183,7 +197,7 @@ function parseWuqianResults(html) {
     if (!hashMatch) continue;
     const infoHash = hashMatch[1];
 
-    // 提取文件大小和日期
+    // 提取文件大小、日期、文件数量
     const sizeMatch = panel.match(/文件大小:\s*<span>([^<]+)<\/span>/);
     const dateMatch = panel.match(/收录时间:\s*<span>([^<]+)<\/span>/);
     const fileCountMatch = panel.match(/文件数量:\s*<span>([^<]+)<\/span>/);
@@ -219,17 +233,16 @@ async function fetchWithCache(url, ttl, waitUntil) {
     },
   });
 
-  // 即使非 200 也返回内容，让调用方自己判断（比如质询页）
   const html = await response.text();
 
-  const cacheResponse = new Response(html, {
-    headers: {
-      'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': `public, max-age=${ttl}`,
-    },
-  });
-
+  // 只在 200 时缓存
   if (response.ok) {
+    const cacheResponse = new Response(html, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': `public, max-age=${ttl}`,
+      },
+    });
     if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
     else await cache.put(cacheKey, cacheResponse);
   }
