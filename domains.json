@@ -1,6 +1,15 @@
 {
-  "updated_at": "2026-09-11T07:20:44.251037+00:00",
-  "available": [],
-  "total_checked": 10,
-  "total_available": 0
+  "updated_at": "2026-09-11T07:28:07.264774+00:00",
+  "source": "https://raw.githubusercontent.com/fwonggh/xccl/main/index.html",
+  "domains": [
+    "https://www.xccl260.xyz",
+    "https://www.xccl261.xyz",
+    "https://www.xccl263.xyz",
+    "https://www.xccl264.xyz",
+    "https://www.xccl265.xyz",
+    "https://www.xccl266.xyz",
+    "https://www.xccl267.xyz",
+    "https://www.xccl268.xyz"
+  ],
+  "total": 8
 }
