@@ -82,16 +82,15 @@ export async function onRequest(context) {
   }
 }
 
-// ========== 读取小草磁力可用域名 ==========
-async function getXiaocaoDomains(request, waitUntil) {
+// ========== 读取小草磁力域名列表 ==========
+async function getXiaocaoDomains(request) {
   try {
-    // 读取根目录的 domains.json（Pages 会把它作为静态资源）
     const domainsUrl = new URL('/domains.json', request.url);
     const res = await fetch(domainsUrl.toString());
     if (res.ok) {
       const data = await res.json();
-      if (Array.isArray(data.available) && data.available.length > 0) {
-        return data.available;
+      if (Array.isArray(data.domains) && data.domains.length > 0) {
+        return data.domains;
       }
     }
   } catch (err) {
@@ -101,8 +100,9 @@ async function getXiaocaoDomains(request, waitUntil) {
   // 兜底：如果 domains.json 读不到，用硬编码列表
   return [
     'https://www.xccl264.xyz',
-    'https://www.xccl268.xyz',
-    'https://www.xccl267.xyz',
+    'https://www.xccl263.xyz',
+    'https://www.xccl261.xyz',
+    'https://www.xccl260.xyz',
   ];
 }
 
@@ -204,7 +204,7 @@ function getXiaocaoSortPath(sort) {
 }
 
 async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
-  const domains = await getXiaocaoDomains(request, waitUntil);
+  const domains = await getXiaocaoDomains(request);
   const sortPath = getXiaocaoSortPath(sort);
 
   for (const domain of domains) {
@@ -234,13 +234,10 @@ async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
 function parseXiaocaoResults(html, domain) {
   const items = [];
 
-  // 用 split 按 search-item 的起始标签切分，每段就是一个结果块
   const parts = html.split(/<div class="search-item[^"]*">/);
-  // parts[0] 是第一个结果之前的内容，跳过
   for (let i = 1; i < parts.length; i++) {
     const block = parts[i];
 
-    // 标题和详情页路径
     const titleMatch = block.match(/<a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/);
     if (!titleMatch) continue;
 
@@ -249,11 +246,8 @@ function parseXiaocaoResults(html, domain) {
     let name = titleMatch[3].replace(/<[^>]+>/g, '').trim();
     if (!name) continue;
 
-    // 文件大小
     const sizeMatch = block.match(/文件大小:\s*<b[^>]*>([^<]+)<\/b>/);
-    // 创建时间
     const dateMatch = block.match(/创建时间:\s*<b>([^<]+)<\/b>/);
-    // 下载热度
     const hotMatch = block.match(/下载热度:\s*<b>([^<]+)<\/b>/);
 
     items.push({
