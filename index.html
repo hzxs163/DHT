@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ø Magnet - 磁力搜索</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text-primary: #202124;
+      --text-secondary: #70757a;
+      --accent: #1a73e8;
+      --accent-hover: #1557b0;
+      --border: #e8eaed;
+      --border-hover: #dadce0;
+      --highlight-bg: #fef7e0;
+      --card-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      --card-shadow-hover: 0 2px 8px rgba(0,0,0,0.1);
+      --radius: 8px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 16px;
+    }
+
+    .header {
+      width: 100%;
+      max-width: 720px;
+      padding: 60px 0 32px;
+      text-align: center;
+      transition: padding 0.3s ease;
+    }
+
+    .header.compact {
+      padding: 24px 0 16px;
+    }
+
+    .logo {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+      letter-spacing: -0.5px;
+    }
+
+    .logo .zero {
+      color: var(--accent);
+    }
+
+    .header.compact .logo {
+      font-size: 22px;
+      margin-bottom: 16px;
+    }
+
+    .search-form {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+    }
+
+    .search-input-wrap {
+      flex: 1;
+      position: relative;
+    }
+
+    .search-input {
+      width: 100%;
+      height: 44px;
+      padding: 0 20px;
+      font-size: 15px;
+      font-family: var(--font);
+      color: var(--text-primary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-input::placeholder {
+      color: #9aa0a6;
+    }
+
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 1px 6px rgba(26,115,232,0.15);
+    }
+
+    .search-btn {
+      height: 44px;
+      padding: 0 24px;
+      font-size: 15px;
+      font-family: var(--font);
+      font-weight: 500;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 24px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+
+    .search-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .search-btn:disabled {
+      background: #b0c4de;
+      cursor: not-allowed;
+    }
+
+    .main {
+      width: 100%;
+      max-width: 720px;
+      flex: 1;
+      padding-bottom: 48px;
+    }
+
+    .result-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      padding: 0 4px;
+    }
+
+    .result-bar .timing {
+      color: #9aa0a6;
+      margin-left: 6px;
+    }
+
+    .sort-options {
+      display: flex;
+      gap: 12px;
+    }
+
+    .sort-options a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .sort-options a:hover {
+      color: var(--text-primary);
+    }
+
+    .sort-options a.active {
+      color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .result-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .result-card {
+      padding: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .result-card:hover {
+      border-color: var(--border-hover);
+      box-shadow: var(--card-shadow-hover);
+    }
+
+    .result-title {
+      font-size: 16px;
+      line-height: 1.5;
+      color: var(--accent);
+      text-decoration: none;
+      display: block;
+      margin-bottom: 10px;
+      word-break: break-word;
+    }
+
+    .result-title:hover {
+      text-decoration: underline;
+    }
+
+    .result-title mark {
+      background: var(--highlight-bg);
+      color: var(--text-primary);
+      font-weight: 600;
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+
+    .result-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .result-meta-left {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .result-meta-left .dot {
+      color: #dadce0;
+    }
+
+    .copy-btn {
+      font-size: 13px;
+      font-family: var(--font);
+      color: var(--accent);
+      background: none;
+      border: none;
+      cursor: pointer;
+      padding: 4px 8px;
+      border-radius: 4px;
+      transition: background 0.2s, color 0.2s;
+      white-space: nowrap;
+    }
+
+    .copy-btn:hover {
+      background: #e8f0fe;
+    }
+
+    .copy-btn.copied {
+      color: #34a853;
+    }
+
+    .loading {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .skeleton {
+      height: 90px;
+      background: linear-gradient(90deg, #f1f3f4 25%, #e8eaed 50%, #f1f3f4 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: var(--radius);
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state .icon {
+      font-size: 40px;
+      margin-bottom: 12px;
+    }
+
+    .empty-state .title {
+      font-size: 16px;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+    }
+
+    .empty-state .desc {
+      font-size: 13px;
+    }
+
+    .empty-state .retry-btn {
+      margin-top: 16px;
+      padding: 8px 20px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+    }
+
+    .empty-state .retry-btn:hover {
+      background: var(--accent-hover);
+    }
+
+    .hot-searches {
+      margin-top: 24px;
+      text-align: center;
+    }
+
+    .hot-searches .label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .hot-tags {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .hot-tag {
+      padding: 6px 14px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      background: #f1f3f4;
+      border-radius: 16px;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .hot-tag:hover {
+      background: #e8eaed;
+      color: var(--text-primary);
+    }
+
+    .load-more {
+      text-align: center;
+      margin-top: 24px;
+    }
+
+    .load-more button {
+      padding: 8px 24px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: var(--accent);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .load-more button:hover {
+      background: #f8f9fa;
+      border-color: var(--border-hover);
+    }
+
+    .footer {
+      width: 100%;
+      max-width: 720px;
+      padding: 20px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    @media (max-width: 768px) {
+      .header {
+        padding: 40px 0 24px;
+      }
+
+      .logo {
+        font-size: 26px;
+      }
+
+      .search-form {
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .search-btn {
+        width: 100%;
+      }
+
+      .result-title {
+        font-size: 15px;
+      }
+
+      .result-meta {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+      }
+
+      .copy-btn {
+        align-self: flex-end;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header" id="header">
+    <div class="logo"><span class="zero">Ø</span> Magnet</div>
+    <form class="search-form" id="searchForm">
+      <div class="search-input-wrap">
+        <input
+          type="text"
+          class="search-input"
+          id="searchInput"
+          placeholder="搜索磁力链接..."
+          autocomplete="off"
+          autofocus
+        />
+      </div>
+      <button type="submit" class="search-btn" id="searchBtn">搜索</button>
+    </form>
+  </header>
+
+  <main class="main" id="main">
+    <div class="hot-searches" id="hotSearches">
+      <div class="label">热门搜索</div>
+      <div class="hot-tags">
+        <a class="hot-tag" href="javascript:void(0)" data-q="CorelDRAW">CorelDRAW</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="Photoshop">Photoshop</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="Office">Office</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="Windows">Windows</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="AutoCAD">AutoCAD</a>
+      </div>
+    </div>
+
+    <div id="resultArea"></div>
+  </main>
+
+  <footer class="footer">
+    免责声明 · 本站仅聚合第三方搜索结果，不存储任何资源
+  </footer>
+
+  <script>
+    const API_BASE = '';
+
+    const header = document.getElementById('header');
+    const searchForm = document.getElementById('searchForm');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const resultArea = document.getElementById('resultArea');
+    const hotSearches = document.getElementById('hotSearches');
+
+    let currentQuery = '';
+    let currentPage = 1;
+    let currentSort = 'newest';
+    let isLoading = false;
+
+    searchForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const q = searchInput.value.trim();
+      if (q) doSearch(q, 1);
+    });
+
+    document.querySelectorAll('.hot-tag').forEach(tag => {
+      tag.addEventListener('click', () => {
+        const q = tag.dataset.q;
+        searchInput.value = q;
+        doSearch(q, 1);
+      });
+    });
+
+    async function doSearch(query, page = 1) {
+      if (isLoading) return;
+      isLoading = true;
+
+      currentQuery = query;
+      currentPage = page;
+
+      header.classList.add('compact');
+      hotSearches.style.display = 'none';
+
+      resultArea.innerHTML = `
+        <div class="result-bar">
+          <span>搜索中...</span>
+        </div>
+        <div class="loading">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
+      `;
+
+      searchBtn.disabled = true;
+      searchBtn.textContent = '搜索中';
+
+      try {
+        const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&page=${page}&sort=${currentSort}`;
+        const res = await fetch(url);
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        renderResults(data, query, page);
+
+      } catch (err) {
+        console.error('搜索失败:', err);
+        renderError();
+      } finally {
+        isLoading = false;
+        searchBtn.disabled = false;
+        searchBtn.textContent = '搜索';
+      }
+    }
+
+    function renderResults(data, query, page) {
+      const results = data.results || [];
+      const total = data.total || results.length;
+      const timing = data.timing || 0;
+
+      if (results.length === 0) {
+        resultArea.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">😕</div>
+            <div class="title">未找到相关结果</div>
+            <div class="desc">试试其他关键词，或检查拼写</div>
+          </div>
+        `;
+        return;
+      }
+
+      let html = `
+        <div class="result-bar">
+          <span>找到 ${total} 条结果 <span class="timing">— ${timing} ms</span></span>
+          <div class="sort-options">
+            <a href="javascript:void(0)" data-sort="relevance" class="${currentSort === 'relevance' ? 'active' : ''}">相关</a>
+            <a href="javascript:void(0)" data-sort="newest" class="${currentSort === 'newest' ? 'active' : ''}">最新</a>
+          </div>
+        </div>
+        <div class="result-list">
+      `;
+
+      results.forEach(item => {
+        const name = highlightKeyword(item.name, query);
+        const size = item.size || '未知';
+        const date = item.date || '';
+        const magnet = item.magnet || '';
+
+        html += `
+          <div class="result-card">
+            <a class="result-title" href="${item.detailUrl || '#'}" target="_blank" rel="noopener">
+              ${name}
+            </a>
+            <div class="result-meta">
+              <div class="result-meta-left">
+                <span>${size}</span>
+                ${date ? `<span class="dot">·</span><span>${date}</span>` : ''}
+              </div>
+              <button class="copy-btn" data-magnet="${escapeAttr(magnet)}">复制磁力</button>
+            </div>
+          </div>
+        `;
+      });
+
+      html += `</div>`;
+
+      if (results.length > 0) {
+        html += `
+          <div class="load-more">
+            <button id="loadMoreBtn">加载更多</button>
+          </div>
+        `;
+      }
+
+      resultArea.innerHTML = html;
+
+      resultArea.querySelectorAll('.copy-btn').forEach(btn => {
+        btn.addEventListener('click', () => copyMagnet(btn));
+      });
+
+      resultArea.querySelectorAll('.sort-options a').forEach(a => {
+        a.addEventListener('click', () => {
+          currentSort = a.dataset.sort;
+          doSearch(currentQuery, 1);
+        });
+      });
+
+      const loadMoreBtn = document.getElementById('loadMoreBtn');
+      if (loadMoreBtn) {
+        loadMoreBtn.addEventListener('click', () => {
+          doSearch(currentQuery, currentPage + 1);
+        });
+      }
+    }
+
+    function highlightKeyword(text, keyword) {
+      if (!keyword) return escapeHtml(text);
+      const escaped = escapeHtml(text);
+      const escapedKeyword = escapeRegExp(escapeHtml(keyword));
+      const regex = new RegExp(`(${escapedKeyword})`, 'gi');
+      return escaped.replace(regex, '<mark>$1</mark>');
+    }
+
+    async function copyMagnet(btn) {
+      const magnet = btn.dataset.magnet;
+      if (!magnet) return;
+
+      try {
+        await navigator.clipboard.writeText(magnet);
+        btn.textContent = '已复制';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = '复制磁力';
+          btn.classList.remove('copied');
+        }, 1500);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = magnet;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        btn.textContent = '已复制';
+        btn.classList.add('copied');
+        setTimeout(() => {
+          btn.textContent = '复制磁力';
+          btn.classList.remove('copied');
+        }, 1500);
+      }
+    }
+
+    function renderError() {
+      resultArea.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⚠️</div>
+          <div class="title">数据源暂时不可用</div>
+          <div class="desc">请稍后重试，或换个关键词</div>
+          <button class="retry-btn" onclick="doSearch('${escapeAttr(currentQuery)}', 1)">重试</button>
+        </div>
+      `;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function escapeRegExp(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+  </script>
+</body>
+</html>
