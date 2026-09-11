@@ -3,6 +3,7 @@
 域名列表生成脚本
 1. 小草磁力：从 fwonggh/xccl 提取域名
 2. 磁力百科：从中转站页面提取 CONFIG，用算法算出子域名
+3. 虎风（hufeng）：从永久入口 ddcl.me / cltt.me 跟随跳转，提取当前落地域名
 把生成的域名写入 domains.json，验证交给 Workers 运行时做
 """
 
@@ -19,6 +20,15 @@ XIAOCAO_SOURCE_URL = 'https://raw.githubusercontent.com/fwonggh/xccl/main/index.
 # ========== 磁力百科中转站 ==========
 CILIBaike_TRANSIT_URL = 'https://xn--tfr084furbf5a.com/'
 ALPHABET = 'abcdefghijklmnopqrstuvwxyz0123456789'
+
+# ========== 虎风永久入口 ==========
+HUFENG_ENTRY_URLS = [
+    'https://ddcl.me',
+    'https://cltt.me',
+]
+
+# 落地域名特征：通常是 hufeng.xxx 或类似
+HUFENG_DOMAIN_RE = re.compile(r'https?://(?:[\w-]+\.)*(?:hufeng|hf)[\w-]*\.[a-z]{2,}', re.I)
 
 OUTPUT_FILE = Path(__file__).parent / 'domains.json'
 
@@ -161,11 +171,78 @@ def get_cilibaike_domains():
     return build_cilibaike_domains(config)
 
 
+# ========== 虎风域名提取 ==========
+def extract_hufeng_domains():
+    """请求永久入口 ddcl.me / cltt.me，跟随跳转，提取当前真实落地域名"""
+    domains = set()
+
+    for entry in HUFENG_ENTRY_URLS:
+        print(f'[虎风] 请求入口: {entry}')
+        try:
+            req = urllib.request.Request(entry, headers=HEADERS)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                final_url = resp.geturl()
+                html = resp.read().decode('utf-8', errors='replace')
+
+            print(f'[虎风] 最终 URL: {final_url}')
+
+            # 1) urllib 跟随 302 后的最终 URL
+            m = re.match(r'(https?://[^/]+)', final_url)
+            if m:
+                domains.add(m.group(1))
+
+            # 2) HTML 里 location.href / window.location 跳转
+            for m in re.findall(
+                r'''(?:location\.href|window\.location(?:\.href)?)\s*=\s*["']([^"']+)["']''',
+                html
+            ):
+                mm = re.match(r'(https?://[^/]+)', m)
+                if mm:
+                    domains.add(mm.group(1))
+
+            # 3) meta refresh 跳转
+            for m in re.findall(r'content=["\'][^"\']*url=([^"\'\s]+)', html, re.I):
+                mm = re.match(r'(https?://[^/]+)', m)
+                if mm:
+                    domains.add(mm.group(1))
+
+            # 4) 页面里出现的 hufeng 域名
+            for m in HUFENG_DOMAIN_RE.findall(html):
+                domains.add(m)
+
+        except Exception as e:
+            print(f'[虎风] 入口 {entry} 失败: {e}')
+
+    # 去掉入口域名本身
+    result = sorted(
+        d for d in domains
+        if not any(entry_host in d for entry_host in HUFENG_ENTRY_URLS)
+    )
+    print(f'[虎风] 提取到 {len(result)} 个落地域名')
+    for d in result:
+        print(f'    - {d}')
+    return result
+
+
+def load_previous_domains():
+    """读取上一次生成的 domains.json，用于保底"""
+    if not OUTPUT_FILE.exists():
+        return {}
+    try:
+        return json.loads(OUTPUT_FILE.read_text(encoding='utf-8'))
+    except Exception as e:
+        print(f'[保底] 读取旧 domains.json 失败: {e}')
+        return {}
+
+
 def main():
+    previous = load_previous_domains()
+
     result = {
         'updated_at': datetime.now(timezone.utc).isoformat(),
         'xiaocao': [],
         'cilibaike': [],
+        'hufeng': [],
     }
 
     # 小草磁力：只提取，不验证
@@ -176,6 +253,16 @@ def main():
     cilibaike_domains = get_cilibaike_domains()
     result['cilibaike'] = cilibaike_domains
 
+    # 虎风：从永久入口提取落地域名，失败时保留上次结果
+    hufeng_domains = extract_hufeng_domains()
+    if hufeng_domains:
+        result['hufeng'] = hufeng_domains
+    else:
+        fallback = previous.get('hufeng', [])
+        if fallback:
+            print(f'[虎风] 提取为空，保留上次的 {len(fallback)} 个域名')
+        result['hufeng'] = fallback
+
     OUTPUT_FILE.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),
         encoding='utf-8',
@@ -185,9 +272,14 @@ def main():
     print(f'已写入 {OUTPUT_FILE}')
     print(f'  小草磁力: {len(result["xiaocao"])} 个')
     print(f'  磁力百科: {len(result["cilibaike"])} 个')
+    print(f'  虎风: {len(result["hufeng"])} 个')
     if result['cilibaike']:
         print('  磁力百科域名:')
         for d in result['cilibaike']:
+            print(f'    - {d}')
+    if result['hufeng']:
+        print('  虎风域名:')
+        for d in result['hufeng']:
             print(f'    - {d}')
 
 
