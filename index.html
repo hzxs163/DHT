@@ -227,24 +227,50 @@
       color: #dadce0;
     }
 
-    .copy-btn {
-      font-size: 13px;
-      font-family: var(--font);
-      color: var(--accent);
-      background: none;
-      border: none;
+    /* ---------- 磁力链接行 ---------- */
+    .magnet-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: #f8f9fa;
+      border: 1px solid var(--border);
+      border-radius: 6px;
       cursor: pointer;
-      padding: 4px 8px;
-      border-radius: 4px;
-      transition: background 0.2s, color 0.2s;
-      white-space: nowrap;
+      transition: background 0.2s, border-color 0.2s;
+      overflow: hidden;
     }
 
-    .copy-btn:hover {
+    .magnet-row:hover {
       background: #e8f0fe;
+      border-color: #c6dafc;
     }
 
-    .copy-btn.copied {
+    .magnet-row.copied {
+      background: #e6f4ea;
+      border-color: #ceead6;
+    }
+
+    .magnet-icon {
+      flex-shrink: 0;
+      color: var(--text-secondary);
+    }
+
+    .magnet-row.copied .magnet-icon {
+      color: #34a853;
+    }
+
+    .magnet-text {
+      font-size: 12px;
+      font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .magnet-row.copied .magnet-text {
       color: #34a853;
     }
 
@@ -395,10 +421,6 @@
         flex-direction: column;
         align-items: flex-start;
         gap: 8px;
-      }
-
-      .copy-btn {
-        align-self: flex-end;
       }
     }
   </style>
@@ -558,8 +580,16 @@
                 <span>${size}</span>
                 ${date ? `<span class="dot">·</span><span>${date}</span>` : ''}
               </div>
-              <button class="copy-btn" data-magnet="${escapeAttr(magnet)}">复制磁力</button>
             </div>
+            ${magnet ? `
+              <div class="magnet-row" data-magnet="${escapeAttr(magnet)}" title="点击复制磁力链接">
+                <svg class="magnet-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+                <span class="magnet-text">${escapeHtml(magnet)}</span>
+              </div>
+            ` : ''}
           </div>
         `;
       });
@@ -576,8 +606,8 @@
 
       resultArea.innerHTML = html;
 
-      resultArea.querySelectorAll('.copy-btn').forEach(btn => {
-        btn.addEventListener('click', () => copyMagnet(btn));
+      resultArea.querySelectorAll('.magnet-row').forEach(row => {
+        row.addEventListener('click', () => copyMagnetRow(row));
       });
 
       resultArea.querySelectorAll('.sort-options a').forEach(a => {
@@ -603,18 +633,15 @@
       return escaped.replace(regex, '<mark>$1</mark>');
     }
 
-    async function copyMagnet(btn) {
-      const magnet = btn.dataset.magnet;
+    async function copyMagnetRow(row) {
+      const magnet = row.dataset.magnet;
       if (!magnet) return;
+
+      const textEl = row.querySelector('.magnet-text');
+      const originalText = textEl.textContent;
 
       try {
         await navigator.clipboard.writeText(magnet);
-        btn.textContent = '已复制';
-        btn.classList.add('copied');
-        setTimeout(() => {
-          btn.textContent = '复制磁力';
-          btn.classList.remove('copied');
-        }, 1500);
       } catch {
         const ta = document.createElement('textarea');
         ta.value = magnet;
@@ -622,13 +649,14 @@
         ta.select();
         document.execCommand('copy');
         document.body.removeChild(ta);
-        btn.textContent = '已复制';
-        btn.classList.add('copied');
-        setTimeout(() => {
-          btn.textContent = '复制磁力';
-          btn.classList.remove('copied');
-        }, 1500);
       }
+
+      row.classList.add('copied');
+      textEl.textContent = '已复制到剪贴板';
+      setTimeout(() => {
+        row.classList.remove('copied');
+        textEl.textContent = originalText;
+      }, 1500);
     }
 
     function renderError() {
