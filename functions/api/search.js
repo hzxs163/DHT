@@ -179,12 +179,11 @@ async function fetchFromXiaocao(query, page, waitUntil) {
 function parseXiaocaoResults(html) {
   const items = [];
 
-  // 每个结果是一个 .search-item 块
-  const itemRegex = /<div class="search-item[^"]*">([\s\S]*?)<\/div>\s*<\/div>\s*<\/div>/g;
-  let itemMatch;
-
-  while ((itemMatch = itemRegex.exec(html)) !== null) {
-    const block = itemMatch[1];
+  // 用 split 按 search-item 的起始标签切分，每段就是一个结果块
+  const parts = html.split(/<div class="search-item[^"]*">/);
+  // parts[0] 是第一个结果之前的内容，跳过
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
 
     // 标题和详情页路径
     const titleMatch = block.match(/<a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/);
