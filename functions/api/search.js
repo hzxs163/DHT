@@ -7,7 +7,6 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  // 读取选中的源，默认全部
   const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
@@ -23,7 +22,7 @@ export async function onRequest(context) {
     if (sources.includes('0magnet')) {
       tasks.push({
         name: '0magnet',
-        promise: fetchFrom0Magnet(query, sort, waitUntil),
+        promise: fetchFrom0Magnet(query, sort, page, waitUntil),
       });
     }
     if (sources.includes('xiaocao')) {
@@ -52,7 +51,6 @@ export async function onRequest(context) {
       }
     });
 
-    // 去重：优先按 info_hash，没有 hash 时按名称
     const seen = new Set();
     const deduped = [];
     for (const item of allItems) {
@@ -71,6 +69,7 @@ export async function onRequest(context) {
       timing,
       debug: {
         sources: sources,
+        page: page,
         totalBeforeDedup: allItems.length,
         ...debug,
       },
@@ -97,7 +96,6 @@ async function getXiaocaoDomains(request) {
     console.error('Failed to load domains.json:', err);
   }
 
-  // 兜底：如果 domains.json 读不到，用硬编码列表
   return [
     'https://www.xccl264.xyz',
     'https://www.xccl263.xyz',
@@ -107,8 +105,8 @@ async function getXiaocaoDomains(request) {
 }
 
 // ========== ØMagnet 数据源 ==========
-async function fetchFrom0Magnet(query, sort, waitUntil) {
-  const searchUrl = `https://0magnet.com/search?q=${encodeURIComponent(query)}&sort=${sort}`;
+async function fetchFrom0Magnet(query, sort, page, waitUntil) {
+  const searchUrl = `https://0magnet.com/search?q=${encodeURIComponent(query)}&sort=${sort}&page=${page}`;
   const searchHtml = await fetchWithCache(searchUrl, 3600, waitUntil);
 
   const items = await parse0MagnetSearchResults(searchHtml);
@@ -212,7 +210,6 @@ async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
       const searchUrl = `${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`;
       const html = await fetchWithCache(searchUrl, 3600, waitUntil);
 
-      // 如果页面里没有 search-item，说明这个域名可能失效了，试下一个
       if (!html.includes('search-item')) {
         console.warn(`Xiaocao domain ${domain} returned no search-item, trying next`);
         continue;
@@ -247,8 +244,8 @@ function parseXiaocaoResults(html, domain) {
     if (!name) continue;
 
     const sizeMatch = block.match(/文件大小:\s*<b[^>]*>([^<]+)<\/b>/);
-    const dateMatch = block.match(/创建时间:\s*<b>([^<]+)<\/b>/);
-    const hotMatch = block.match(/下载热度:\s*<b>([^<]+)<\/b>/);
+    const dateMatch = block.match(/创建时间:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
+    const hotMatch = block.match(/下载热度:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
 
     items.push({
       name,
