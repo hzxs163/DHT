@@ -66,13 +66,102 @@
       margin-bottom: 16px;
     }
 
+    /* ---------- 搜索栏（下拉 + 输入框 + 按钮） ---------- */
     .search-form {
       display: flex;
       align-items: center;
       gap: 8px;
       width: 100%;
+      position: relative;
     }
 
+    /* 数据源下拉 */
+    .source-dropdown {
+      position: relative;
+      flex-shrink: 0;
+    }
+
+    .source-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 44px;
+      padding: 0 14px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: var(--text-primary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .source-btn:hover {
+      border-color: var(--border-hover);
+    }
+
+    .source-btn.open {
+      border-color: var(--accent);
+      box-shadow: 0 1px 6px rgba(26,115,232,0.15);
+    }
+
+    .source-btn .arrow {
+      font-size: 10px;
+      color: var(--text-secondary);
+      transition: transform 0.2s;
+    }
+
+    .source-btn.open .arrow {
+      transform: rotate(180deg);
+    }
+
+    .source-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 160px;
+      padding: 6px 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      z-index: 100;
+    }
+
+    .source-menu.open {
+      display: block;
+    }
+
+    .source-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .source-option:hover {
+      background: #f8f9fa;
+    }
+
+    .source-option input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+    }
+
+    .source-option span {
+      user-select: none;
+    }
+
+    /* 搜索输入框 */
     .search-input-wrap {
       flex: 1;
       position: relative;
@@ -113,6 +202,7 @@
       border-radius: 24px;
       cursor: pointer;
       white-space: nowrap;
+      flex-shrink: 0;
       transition: background 0.2s;
     }
 
@@ -227,7 +317,14 @@
       color: #dadce0;
     }
 
-    /* ---------- 磁力链接行 ---------- */
+    .result-source {
+      font-size: 11px;
+      color: #9aa0a6;
+      background: #f1f3f4;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
     .magnet-row {
       display: flex;
       align-items: center;
@@ -405,22 +502,31 @@
       }
 
       .search-form {
-        flex-direction: column;
-        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .source-dropdown {
+        order: 2;
+      }
+
+      .search-input-wrap {
+        order: 1;
+        flex: 1 0 100%;
       }
 
       .search-btn {
-        width: 100%;
+        order: 3;
+        flex: 1;
+      }
+
+      .source-btn {
+        height: 38px;
+        padding: 0 12px;
+        font-size: 13px;
       }
 
       .result-title {
         font-size: 15px;
-      }
-
-      .result-meta {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 8px;
       }
     }
   </style>
@@ -430,6 +536,22 @@
   <header class="header" id="header">
     <div class="logo"><span class="zero">Ø</span> Magnet</div>
     <form class="search-form" id="searchForm">
+      <div class="source-dropdown" id="sourceDropdown">
+        <button type="button" class="source-btn" id="sourceBtn">
+          <span id="sourceLabel">全部源</span>
+          <span class="arrow">▼</span>
+        </button>
+        <div class="source-menu" id="sourceMenu">
+          <label class="source-option">
+            <input type="checkbox" value="0magnet" checked>
+            <span>ØMagnet</span>
+          </label>
+          <label class="source-option">
+            <input type="checkbox" value="xiaocao" checked>
+            <span>小草磁力</span>
+          </label>
+        </div>
+      </div>
       <div class="search-input-wrap">
         <input
           type="text"
@@ -473,11 +595,65 @@
     const resultArea = document.getElementById('resultArea');
     const hotSearches = document.getElementById('hotSearches');
 
+    const sourceDropdown = document.getElementById('sourceDropdown');
+    const sourceBtn = document.getElementById('sourceBtn');
+    const sourceMenu = document.getElementById('sourceMenu');
+    const sourceLabel = document.getElementById('sourceLabel');
+
     let currentQuery = '';
     let currentPage = 1;
     let currentSort = 'newest';
     let isLoading = false;
 
+    // ---------- 数据源下拉交互 ----------
+    sourceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sourceMenu.classList.toggle('open');
+      sourceBtn.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!sourceDropdown.contains(e.target)) {
+        sourceMenu.classList.remove('open');
+        sourceBtn.classList.remove('open');
+      }
+    });
+
+    sourceMenu.addEventListener('change', () => {
+      updateSourceLabel();
+    });
+
+    function updateSourceLabel() {
+      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
+      const checked = Array.from(checkboxes).filter(c => c.checked);
+
+      // 全部取消时自动恢复全选
+      if (checked.length === 0) {
+        checkboxes.forEach(c => c.checked = true);
+        sourceLabel.textContent = '全部源';
+        return;
+      }
+
+      if (checked.length === checkboxes.length) {
+        sourceLabel.textContent = '全部源';
+      } else {
+        sourceLabel.textContent = checked.map(c => {
+          const label = c.nextElementSibling;
+          return label ? label.textContent : c.value;
+        }).join('、');
+      }
+    }
+
+    function getSelectedSources() {
+      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
+      const checked = Array.from(checkboxes).filter(c => c.checked);
+      if (checked.length === 0) {
+        return Array.from(checkboxes).map(c => c.value);
+      }
+      return checked.map(c => c.value);
+    }
+
+    // ---------- 搜索 ----------
     searchForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const q = searchInput.value.trim();
@@ -517,7 +693,8 @@
       searchBtn.textContent = '搜索中';
 
       try {
-        const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&page=${page}&sort=${currentSort}`;
+        const sources = getSelectedSources().join(',');
+        const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&page=${page}&sort=${currentSort}&sources=${encodeURIComponent(sources)}`;
         const res = await fetch(url);
 
         if (!res.ok) {
@@ -569,6 +746,7 @@
         const size = item.size || '未知';
         const date = item.date || '';
         const magnet = item.magnet || '';
+        const source = item.source || '';
 
         html += `
           <div class="result-card">
@@ -579,6 +757,7 @@
               <div class="result-meta-left">
                 <span>${size}</span>
                 ${date ? `<span class="dot">·</span><span>${date}</span>` : ''}
+                ${source ? `<span class="result-source">${escapeHtml(source)}</span>` : ''}
               </div>
             </div>
             ${magnet ? `
