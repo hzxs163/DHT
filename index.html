@@ -240,6 +240,7 @@
       border-radius: 10px;
     }
 
+    /* ---------- 磁力行（现在是 <a>） ---------- */
     .magnet-row {
       display: flex;
       align-items: center;
@@ -252,6 +253,9 @@
       cursor: pointer;
       transition: background 0.2s, border-color 0.2s;
       overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      -webkit-tap-highlight-color: transparent;
     }
 
     .magnet-row:hover { background: #e8f0fe; border-color: #c6dafc; }
@@ -270,6 +274,19 @@
     }
 
     .magnet-row.copied .magnet-text { color: #34a853; }
+
+    .magnet-copy-hint {
+      margin-left: auto;
+      font-size: 11px;
+      color: #9aa0a6;
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    /* 手机端显示“长按复制”，桌面端隐藏 */
+    @media (min-width: 769px) {
+      .magnet-copy-hint { display: none; }
+    }
 
     /* ---------- 分页 ---------- */
     .pagination {
@@ -408,36 +425,35 @@
           <span id="sourceLabel">全部源</span>
           <span class="arrow">▼</span>
         </button>
-<div class="source-menu" id="sourceMenu">
-  <label class="source-option">
-    <input type="checkbox" value="0magnet" checked>
-    <span>ØMagnet</span>
-  </label>
-  <label class="source-option">
-    <input type="checkbox" value="xiaocao" checked>
-    <span>小草磁力</span>
-  </label>
-  <label class="source-option">
-    <input type="checkbox" value="juniorter" checked>
-    <span>Juniorter</span>
-  </label>
-  <label class="source-option">
-    <input type="checkbox" value="cilibaike" checked>
-    <span>磁力百科</span>
-  </label>
-  <label class="source-option">
-    <input type="checkbox" value="knaben" checked>
-    <span>Knaben</span>
-  </label>
-  <label class="source-option">
-    <input type="checkbox" value="yuhuage" checked>
-    <span>雨花阁</span>
-  </label>
-    <label class="source-option">
-    <input type="checkbox" value="hufeng" checked>
-    <span>虎风</span>
-  </label>
-</div>
+        <div class="source-menu" id="sourceMenu">
+          <label class="source-option">
+            <input type="checkbox" value="0magnet" checked>
+            <span>ØMagnet</span>
+          </label>
+          <label class="source-option">
+            <input type="checkbox" value="xiaocao" checked>
+            <span>小草磁力</span>
+          </label>
+          <label class="source-option">
+            <input type="checkbox" value="juniorter" checked>
+            <span>Juniorter</span>
+          </label>
+          <label class="source-option">
+            <input type="checkbox" value="cilibaike" checked>
+            <span>磁力百科</span>
+          </label>
+          <label class="source-option">
+            <input type="checkbox" value="knaben" checked>
+            <span>Knaben</span>
+          </label>
+          <label class="source-option">
+            <input type="checkbox" value="yuhuage" checked>
+            <span>雨花阁</span>
+          </label>
+          <label class="source-option">
+            <input type="checkbox" value="hufeng" checked>
+            <span>虎风</span>
+          </label>
         </div>
       </div>
       <div class="search-input-wrap">
@@ -579,7 +595,6 @@
       searchBtn.disabled = true;
       searchBtn.textContent = '搜索中';
 
-      // 翻页时滚动到顶部
       if (page > 1) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
@@ -653,13 +668,14 @@
               </div>
             </div>
             ${magnet ? `
-              <div class="magnet-row" data-magnet="${escapeAttr(magnet)}" title="点击复制磁力链接">
+              <a class="magnet-row" href="${escapeAttr(magnet)}" data-magnet="${escapeAttr(magnet)}" title="点击打开 / 长按复制">
                 <svg class="magnet-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                   <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
                   <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
                 </svg>
                 <span class="magnet-text">${escapeHtml(magnet)}</span>
-              </div>
+                <span class="magnet-copy-hint">长按复制</span>
+              </a>
             ` : ''}
           </div>
         `;
@@ -667,7 +683,6 @@
 
       html += `</div>`;
 
-      // 分页
       html += `
         <div class="pagination">
           <button class="page-btn" id="prevBtn" ${page <= 1 ? 'disabled' : ''}>上一页</button>
@@ -678,12 +693,36 @@
 
       resultArea.innerHTML = html;
 
-      // 绑定复制
+      // 长按复制（短按交给系统处理 magnet: 协议）
       resultArea.querySelectorAll('.magnet-row').forEach(row => {
-        row.addEventListener('click', () => copyMagnetRow(row));
+        let longPressTimer = null;
+
+        const start = () => {
+          longPressTimer = setTimeout(() => {
+            longPressTimer = null;
+            copyMagnetRow(row);
+          }, 500);
+        };
+
+        const cancel = () => {
+          if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+          }
+        };
+
+        row.addEventListener('touchstart', start, { passive: true });
+        row.addEventListener('touchend', cancel);
+        row.addEventListener('touchmove', cancel, { passive: true });
+        row.addEventListener('touchcancel', cancel);
+
+        // 桌面端右键复制
+        row.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          copyMagnetRow(row);
+        });
       });
 
-      // 绑定排序
       resultArea.querySelectorAll('.sort-options a').forEach(a => {
         a.addEventListener('click', () => {
           currentSort = a.dataset.sort;
@@ -691,7 +730,6 @@
         });
       });
 
-      // 绑定翻页
       const prevBtn = document.getElementById('prevBtn');
       const nextBtn = document.getElementById('nextBtn');
       if (prevBtn) {
