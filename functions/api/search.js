@@ -1,5 +1,14 @@
 // Pages Functions - /api/search
 
+const JUNIORTER_API = 'https://torrent.juniorter.in/api/search-stream';
+const JUNIORTER_PROVIDERS = [
+  'yts', 'eztv', 'torrentclaw', 'piratebay', 'knaben', '1337x', 'limetorrents',
+  'torrentfunk', 'torrentdownloads', 'torlock', 'yourbittorrent', 'magnetz',
+  'bitsearch', 'solidtorrents', 'torrentscsv', 'therarbg', 'animetosho', 'nyaa',
+  'mikan', 'tokyotosho', 'dmhy', 'acgrip', 'subsplease', 'rutor',
+  'audiobookbay', 'academictorrents'
+].join(',');
+
 export async function onRequest(context) {
   const { request, waitUntil } = context;
   const url = new URL(request.url);
@@ -7,7 +16,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -31,6 +40,12 @@ export async function onRequest(context) {
         promise: fetchFromXiaocao(query, page, sort, request, waitUntil),
       });
     }
+    if (sources.includes('juniorter')) {
+      tasks.push({
+        name: 'juniorter',
+        promise: fetchFromJuniorter(query, page, sort, waitUntil),
+      });
+    }
 
     const results = await Promise.allSettled(tasks.map(t => t.promise));
 
@@ -51,6 +66,7 @@ export async function onRequest(context) {
       }
     });
 
+    // 去重：优先按 info_hash，没有 hash 时按名称
     const seen = new Set();
     const deduped = [];
     for (const item of allItems) {
@@ -79,6 +95,91 @@ export async function onRequest(context) {
     console.error('Search error:', err);
     return jsonResponse({ error: 'Search failed', detail: String(err) }, 502);
   }
+}
+
+// ========== Juniorter 数据源（API + SSE） ==========
+async function fetchFromJuniorter(query, page, sort, waitUntil) {
+  // Juniorter 的排序：seeds / date
+  const juniorterSort = (sort === 'time' || sort === 'newest') ? 'date' : 'seeds';
+
+  const apiUrl = `${JUNIORTER_API}?q=${encodeURIComponent(query)}&sort=${juniorterSort}&pageSize=50&providers=${encodeURIComponent(JUNIORTER_PROVIDERS)}`;
+
+  const cacheKey = new Request(apiUrl, { method: 'GET' });
+  const cache = caches.default;
+
+  let response = await cache.match(cacheKey);
+  if (!response) {
+    response = await fetch(apiUrl, {
+      headers: {
+        'Accept': 'text/event-stream',
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Referer': 'https://torrent.juniorter.in/ch/',
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Juniorter HTTP ${response.status}`);
+    }
+
+    // 克隆一份用于缓存
+    const cloned = response.clone();
+    const cacheResponse = new Response(await cloned.text(), {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'public, max-age=1800',
+      },
+    });
+    if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
+    else await cache.put(cacheKey, cacheResponse);
+  }
+
+  const text = await response.text();
+  return parseJuniorterSSE(text);
+}
+
+function parseJuniorterSSE(text) {
+  const items = [];
+  const lines = text.split('\n');
+
+  let currentEvent = null;
+  let currentData = '';
+
+  for (const line of lines) {
+    if (line.startsWith('event: ')) {
+      currentEvent = line.slice(7).trim();
+    } else if (line.startsWith('data: ')) {
+      currentData = line.slice(6);
+    } else if (line === '' && currentEvent && currentData) {
+      // 一个事件结束
+      if (currentEvent === 'provider') {
+        try {
+          const parsed = JSON.parse(currentData);
+          if (parsed.ok && Array.isArray(parsed.results)) {
+            for (const r of parsed.results) {
+              if (r.magnet && r.title) {
+                items.push({
+                  name: r.title,
+                  size: r.size || '',
+                  date: r.date ? r.date.slice(0, 10) : '',
+                  seeds: r.seeds || 0,
+                  peers: r.peers || 0,
+                  magnet: r.magnet,
+                  detailUrl: r.url || '',
+                  source: 'juniorter',
+                });
+              }
+            }
+          }
+        } catch (e) {
+          // 忽略解析失败的事件
+        }
+      }
+      currentEvent = null;
+      currentData = '';
+    }
+  }
+
+  return items;
 }
 
 // ========== 读取小草磁力域名列表 ==========
