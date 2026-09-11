@@ -1,0 +1,41 @@
+name: Check Xiaocao Domains
+
+on:
+  # 每天 UTC 0 点运行一次（北京时间 8 点）
+  schedule:
+    - cron: '0 0 * * *'
+  # 允许手动触发
+  workflow_dispatch:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Run domain check
+        run: python check_domains.py
+
+      - name: Commit and push if changed
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add domains.json
+          if git diff --staged --quiet; then
+            echo "domains.json 没有变化，跳过提交"
+          else
+            git commit -m "chore: update available xiaocao domains"
+            git push
+          fi
