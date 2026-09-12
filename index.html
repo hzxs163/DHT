@@ -19,6 +19,7 @@
       --text-secondary: #70757a;
       --accent: #1a73e8;
       --accent-hover: #1557b0;
+      --accent-dim: #e8f0fe;
       --border: #e8eaed;
       --border-hover: #dadce0;
       --highlight-bg: #fef7e0;
@@ -66,6 +67,7 @@
 
     .header.compact .logo { font-size: 22px; margin-bottom: 16px; }
 
+    /* ---------- qBittorrent 齿轮按钮 ---------- */
     .qb-gear {
       position: absolute;
       top: 60px;
@@ -108,104 +110,6 @@
       position: relative;
     }
 
-    .source-dropdown { position: relative; flex-shrink: 0; }
-
-    .source-btn {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      height: 44px;
-      padding: 0 14px;
-      font-size: 14px;
-      font-family: var(--font);
-      color: var(--text-primary);
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 24px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: border-color 0.2s, box-shadow 0.2s;
-    }
-
-    .source-btn:hover { border-color: var(--border-hover); }
-    .source-btn.open { border-color: var(--accent); box-shadow: 0 1px 6px rgba(26,115,232,0.15); }
-    .source-btn .arrow { font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; }
-    .source-btn.open .arrow { transform: rotate(180deg); }
-
-    .source-menu {
-      display: none;
-      position: absolute;
-      top: calc(100% + 6px);
-      left: 0;
-      min-width: 200px;
-      max-height: 60vh;
-      overflow-y: auto;
-      padding: 6px 0;
-      background: var(--bg);
-      border: 1px solid var(--border);
-      border-radius: 12px;
-      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-      z-index: 100;
-    }
-
-    .source-menu.open { display: block; }
-
-    .source-menu-actions {
-      display: flex;
-      justify-content: space-between;
-      padding: 4px 14px 8px;
-      border-bottom: 1px solid var(--border);
-      margin-bottom: 4px;
-    }
-
-    .source-menu-actions a {
-      font-size: 12px;
-      color: var(--accent);
-      text-decoration: none;
-      cursor: pointer;
-    }
-
-    .source-menu-actions a:hover { text-decoration: underline; }
-
-    .source-option {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 8px 14px;
-      font-size: 13px;
-      color: var(--text-primary);
-      cursor: pointer;
-      transition: background 0.15s;
-    }
-
-    .source-option:hover { background: #f8f9fa; }
-
-    .source-option:has(input:checked) {
-      background: #e8f0fe;
-    }
-
-    .source-option:has(input:checked):hover {
-      background: #d2e3fc;
-    }
-
-    .source-option input[type="checkbox"] {
-      cursor: pointer;
-      accent-color: var(--accent);
-      width: 15px;
-      height: 15px;
-      flex-shrink: 0;
-    }
-
-    .source-option span { user-select: none; }
-
-    .source-option:has(input:checked)::after {
-      content: "✓";
-      margin-left: auto;
-      color: var(--accent);
-      font-size: 13px;
-      font-weight: 600;
-    }
-
     .search-input-wrap { flex: 1; position: relative; }
 
     .search-input {
@@ -243,6 +147,71 @@
 
     .search-btn:hover { background: var(--accent-hover); }
     .search-btn:disabled { background: #b0c4de; cursor: not-allowed; }
+
+    /* ---------- 源 chips ---------- */
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 14px;
+      font-size: 13px;
+      font-family: var(--font);
+      color: var(--text-secondary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      cursor: pointer;
+      user-select: none;
+      transition: border-color 0.2s, background 0.2s, color 0.2s;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .chip:hover { border-color: var(--border-hover); }
+
+    .chip .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--border-hover);
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+
+    .chip[data-on] {
+      color: var(--accent);
+      border-color: var(--accent);
+      background: var(--accent-dim);
+    }
+
+    .chip[data-on] .dot { background: var(--accent); }
+
+    .chip .sub {
+      font-size: 11px;
+      color: #9aa0a6;
+      margin-left: 2px;
+    }
+
+    .chip[data-on] .sub { color: var(--accent); opacity: .7; }
+
+    /* 移动端 */
+    @media (max-width: 768px) {
+      .chips {
+        justify-content: flex-start;
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 4px;
+        -webkit-overflow-scrolling: touch;
+      }
+      .chip { flex-shrink: 0; }
+    }
 
     .main { width: 100%; max-width: 720px; flex: 1; padding-bottom: 48px; }
 
@@ -614,10 +583,8 @@
       .qb-gear { top: 40px; height: 30px; padding: 0 10px; font-size: 11.5px; }
       .header.compact .qb-gear { top: 20px; }
       .search-form { flex-wrap: wrap; }
-      .source-dropdown { order: 2; }
-      .search-input-wrap { order: 1; flex: 1 0 100%; }
-      .search-btn { order: 3; flex: 1; }
-      .source-btn { height: 38px; padding: 0 12px; font-size: 13px; }
+      .search-input-wrap { flex: 1 0 100%; }
+      .search-btn { flex: 1; }
       .result-title { font-size: 15px; }
     }
   </style>
@@ -631,46 +598,6 @@
     </button>
     <div class="logo"><span class="zero">🧲</span> 磁力搜索</div>
     <form class="search-form" id="searchForm">
-      <div class="source-dropdown" id="sourceDropdown">
-        <button type="button" class="source-btn" id="sourceBtn">
-          <span id="sourceLabel">ØMagnet</span>
-          <span class="arrow">▼</span>
-        </button>
-        <div class="source-menu" id="sourceMenu">
-          <div class="source-menu-actions">
-            <a href="javascript:void(0)" id="selectAllSources">全选</a>
-            <a href="javascript:void(0)" id="clearAllSources">清空</a>
-          </div>
-          <label class="source-option">
-            <input type="checkbox" value="0magnet" checked>
-            <span>ØMagnet</span>
-          </label>
-          <label class="source-option">
-            <input type="checkbox" value="xiaocao">
-            <span>小草磁力</span>
-          </label>
-          <label class="source-option">
-            <input type="checkbox" value="juniorter">
-            <span>Juniorter</span>
-          </label>
-          <label class="source-option">
-            <input type="checkbox" value="cilibaike">
-            <span>磁力百科</span>
-          </label>
-          <label class="source-option">
-            <input type="checkbox" value="knaben">
-            <span>Knaben</span>
-          </label>
-          <label class="source-option">
-            <input type="checkbox" value="yuhuage">
-            <span>雨花阁</span>
-          </label>
-          <label class="source-option">
-            <input type="checkbox" value="hufeng">
-            <span>虎风</span>
-          </label>
-        </div>
-      </div>
       <div class="search-input-wrap">
         <input
           type="text"
@@ -683,6 +610,7 @@
       </div>
       <button type="submit" class="search-btn" id="searchBtn">搜索</button>
     </form>
+    <div class="chips" id="chips"></div>
   </header>
 
   <main class="main" id="main">
@@ -735,7 +663,18 @@
   <script>
     const API_BASE = '';
 
-    // ---------- 默认勾选的源 ----------
+    // ---------- 源定义 ----------
+    const SOURCES = [
+      { id: '0magnet',   label: 'ØMagnet' },
+      { id: 'xiaocao',   label: '小草磁力' },
+      { id: 'juniorter', label: 'Juniorter' },
+      { id: 'cilibaike', label: '磁力百科' },
+      { id: 'knaben',    label: 'Knaben' },
+      { id: 'yuhuage',   label: '雨花阁' },
+      { id: 'hufeng',    label: '虎风' },
+    ];
+
+    // ---------- 默认选中的源 ----------
     const DEFAULT_SOURCES = ['0magnet'];
 
     // ---------- qBittorrent 配置 ----------
@@ -871,81 +810,44 @@
     const searchBtn = document.getElementById('searchBtn');
     const resultArea = document.getElementById('resultArea');
     const hotSearches = document.getElementById('hotSearches');
-
-    const sourceDropdown = document.getElementById('sourceDropdown');
-    const sourceBtn = document.getElementById('sourceBtn');
-    const sourceMenu = document.getElementById('sourceMenu');
-    const sourceLabel = document.getElementById('sourceLabel');
+    const chipsEl = document.getElementById('chips');
 
     let currentQuery = '';
     let currentPage = 1;
     let currentSort = 'newest';
     let isLoading = false;
+    const selectedSources = new Set(DEFAULT_SOURCES);
 
-    (function initSources() {
-      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
-      checkboxes.forEach(c => {
-        c.checked = DEFAULT_SOURCES.includes(c.value);
-      });
-      updateSourceLabel();
-    })();
-
-    loadQbConfig();
-
-    sourceBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      sourceMenu.classList.toggle('open');
-      sourceBtn.classList.toggle('open');
-    });
-
-    document.addEventListener('click', (e) => {
-      if (!sourceDropdown.contains(e.target)) {
-        sourceMenu.classList.remove('open');
-        sourceBtn.classList.remove('open');
-      }
-    });
-
-    sourceMenu.addEventListener('change', () => {
-      updateSourceLabel();
-    });
-
-    document.getElementById('selectAllSources').addEventListener('click', (e) => {
-      e.preventDefault();
-      sourceMenu.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = true);
-      updateSourceLabel();
-    });
-
-    document.getElementById('clearAllSources').addEventListener('click', (e) => {
-      e.preventDefault();
-      sourceMenu.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = false);
-      updateSourceLabel();
-    });
-
-    function updateSourceLabel() {
-      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
-      const checked = Array.from(checkboxes).filter(c => c.checked);
-
-      if (checked.length === 0) {
-        sourceLabel.textContent = '未选择';
-        return;
-      }
-
-      if (checked.length === checkboxes.length) {
-        sourceLabel.textContent = '全部源';
-      } else {
-        sourceLabel.textContent = checked.map(c => {
-          const label = c.nextElementSibling;
-          return label ? label.textContent : c.value;
-        }).join('、');
+    // ---------- 构建 chips ----------
+    function buildChips() {
+      chipsEl.replaceChildren();
+      for (const s of SOURCES) {
+        const el = document.createElement('button');
+        el.type = 'button';
+        el.className = 'chip';
+        el.dataset.id = s.id;
+        if (selectedSources.has(s.id)) el.setAttribute('data-on', '');
+        el.innerHTML = '<span class="dot"></span>' + s.label;
+        el.addEventListener('click', () => {
+          if (selectedSources.has(s.id)) {
+            selectedSources.delete(s.id);
+          } else {
+            selectedSources.add(s.id);
+          }
+          el.toggleAttribute('data-on');
+        });
+        chipsEl.appendChild(el);
       }
     }
 
     function getSelectedSources() {
-      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
-      const checked = Array.from(checkboxes).filter(c => c.checked);
-      return checked.map(c => c.value);
+      return SOURCES.filter(s => selectedSources.has(s.id)).map(s => s.id);
     }
 
+    loadQbConfig();
+    buildChips();
+
+    // ---------- 搜索 ----------
     searchForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const q = searchInput.value.trim();
