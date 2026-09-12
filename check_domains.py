@@ -6,17 +6,26 @@
 3. 虎风（hufeng）：从永久入口 ddcl.me / cltt.me 跟随跳转，提取当前落地域名
 4. 雨花阁（yuhuage）：从永久入口 iyuhuage.fun 跟随跳转，提取当前落地域名
 把生成的域名写入 domains.json，验证交给 Workers 运行时做
+
+依赖：curl_cffi（用于模拟 Chrome TLS 指纹，绕过 WAF 403）
 """
 
 import base64
 import json
 import re
-import ssl
 import time
-import urllib.error
-import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
+
+# curl_cffi：模拟真实 Chrome 的 TLS/HTTP2 指纹，过 Cloudflare / Apache WAF
+try:
+    from curl_cffi import requests as cffi_requests
+    HAS_CFFI = True
+except ImportError:
+    HAS_CFFI = False
+    import urllib.request
+    import urllib.error
+    import ssl
 
 # ========== 小草磁力 ==========
 XIAOCAO_SOURCE_URL = 'https://raw.githubusercontent.com/fwonggh/xccl/main/index.html'
@@ -31,7 +40,6 @@ HUFENG_ENTRY_URLS = [
     'https://cltt.me',
 ]
 
-# 落地域名特征：通常是 hufeng.xxx 或类似
 HUFENG_DOMAIN_RE = re.compile(r'https?://(?:[\w-]+\.)*(?:hufeng|hf)[\w-]*\.[a-z]{2,}', re.I)
 
 # ========== 雨花阁永久入口 ==========
@@ -48,11 +56,38 @@ HEADERS = {
 }
 
 
-def fetch_url(url, timeout=15):
-    """请求 URL，返回文本内容"""
-    req = urllib.request.Request(url, headers=HEADERS)
-    with urllib.request.urlopen(req, timeout=timeout) as resp:
-        return resp.read().decode('utf-8', errors='replace')
+# ========== 统一请求层 ==========
+def fetch_url(url, timeout=15, headers=None, impersonate='chrome120'):
+    """
+    统一请求函数。
+    优先用 curl_cffi（模拟 Chrome 指纹，过 WAF），
+    没装 curl_cffi 则回退到 urllib。
+    返回 (text, final_url)。
+    """
+    h = {**HEADERS, **(headers or {})}
+
+    if HAS_CFFI:
+        resp = cffi_requests.get(
+            url,
+            headers=h,
+            timeout=timeout,
+            impersonate=impersonate,
+            allow_redirects=True,
+        )
+        return resp.text, str(resp.url)
+    else:
+        req = urllib.request.Request(url, headers=h)
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+            return resp.read().decode('utf-8', errors='replace'), resp.geturl()
+
+
+def fetch_text(url, timeout=15, headers=None):
+    """只要文本内容"""
+    text, _ = fetch_url(url, timeout=timeout, headers=headers)
+    return text
 
 
 # ========== 小草磁力域名提取 ==========
@@ -60,7 +95,7 @@ def extract_xiaocao_domains():
     """从 fwonggh/xccl 的 index.html 提取小草磁力域名"""
     print(f'[小草] 拉取源文件: {XIAOCAO_SOURCE_URL}')
     try:
-        content = fetch_url(XIAOCAO_SOURCE_URL)
+        content = fetch_text(XIAOCAO_SOURCE_URL)
     except Exception as e:
         print(f'[小草] 拉取失败: {e}')
         return []
@@ -104,7 +139,6 @@ def extract_cilibaike_config(html):
     js_obj = match.group(1)
 
     try:
-        # 把 JS 对象字面量转成 JSON
         js_obj = re.sub(r'(\w+)\s*:', r'"\1":', js_obj)
         js_obj = js_obj.replace("'", '"')
         js_obj = re.sub(r',\s*\}', '}', js_obj)
@@ -120,7 +154,7 @@ def extract_cilibaike_config(html):
 
 
 def hash32(text):
-    """FNV-1a 32位哈希，复现中转站页面的算法"""
+    """FNV-1a 32位哈希"""
     h = 2166136261
     for ch in text:
         h ^= ord(ch)
@@ -129,7 +163,7 @@ def hash32(text):
 
 
 def seeded_code(seed_text, length):
-    """xorshift 随机码生成，复现中转站页面的算法"""
+    """xorshift 随机码生成"""
     state = hash32(seed_text) or 1
     output = ''
     for _ in range(length):
@@ -168,7 +202,7 @@ def get_cilibaike_domains():
     """获取磁力百科当前可用的子域名"""
     print(f'[磁力百科] 拉取中转站: {CILIBaike_TRANSIT_URL}')
     try:
-        html = fetch_url(CILIBaike_TRANSIT_URL)
+        html = fetch_text(CILIBaike_TRANSIT_URL)
     except Exception as e:
         print(f'[磁力百科] 中转站拉取失败: {e}')
         return []
@@ -190,25 +224,17 @@ def extract_hufeng_domains():
     """
     domains = set()
 
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-
-    browser_headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': '*/*',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-    }
-
     now = datetime.now()
     zz_sub = f'{now.month}{now.day}'  # 9月11日 → "911"
 
     for entry in HUFENG_ENTRY_URLS:
         print(f'[虎风] 请求入口: {entry}')
         try:
-            req = urllib.request.Request(entry, headers={**browser_headers, 'Referer': entry + '/'})
-            with urllib.request.urlopen(req, timeout=20, context=ctx) as resp:
-                html = resp.read().decode('utf-8', errors='replace')
+            html, _ = fetch_url(
+                entry,
+                timeout=20,
+                headers={'Referer': entry + '/', 'Accept': '*/*'},
+            )
             print(f'[虎风] 入口页面长度: {len(html)}')
 
             entry_b64 = base64.b64encode(entry.encode()).decode()
@@ -227,9 +253,11 @@ def extract_hufeng_domains():
                 api_url = f'https://gn{zz_sub}{suffix}/api.JS?1,{entry_b64}'
                 print(f'[虎风] 请求 api.JS: {api_url}')
                 try:
-                    req2 = urllib.request.Request(api_url, headers={**browser_headers, 'Referer': entry + '/'})
-                    with urllib.request.urlopen(req2, timeout=20, context=ctx) as resp2:
-                        js = resp2.read().decode('utf-8', errors='replace')
+                    js, _ = fetch_url(
+                        api_url,
+                        timeout=20,
+                        headers={'Referer': entry + '/', 'Accept': '*/*'},
+                    )
                     print(f'[虎风] api.JS 返回长度: {len(js)}')
                     print(f'[虎风] api.JS 返回开头: {js[:200]}')
 
@@ -269,55 +297,40 @@ def extract_hufeng_domains():
 # ========== 雨花阁域名提取 ==========
 def extract_yuhuage_domains():
     """
-    雨花阁永久入口 iyuhuage.fun 是 Apache 302 跳转，
-    请求后 urllib 自动跟随，resp.geturl() 就是落地域名。
-    注意：不要带 Referer，否则 Apache 会返回 403。
+    雨花阁永久入口 iyuhuage.fun 是 Apache 302 跳转。
+    用 curl_cffi 模拟 Chrome 指纹，避免被 WAF 判为爬虫返回 403。
     """
     domains = set()
-
-    browser_headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'zh-CN,zh;q=0.9',
-    }
 
     for entry in YUHUAGE_ENTRY_URLS:
         print(f'[雨花阁] 请求入口: {entry}')
         try:
-            # 不传 Referer
-            req = urllib.request.Request(entry, headers=browser_headers)
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                final_url = resp.geturl()
-                html = resp.read().decode('utf-8', errors='replace')
-
+            # 只带 UA，不带 Accept，避免触发 WAF
+            html, final_url = fetch_url(
+                entry,
+                timeout=20,
+                headers={'Accept': None} if False else None,  # 用默认 HEADERS
+            )
             print(f'[雨花阁] 最终 URL: {final_url}')
             print(f'[雨花阁] 页面长度: {len(html)}')
 
-            # 1) urllib 跟随跳转后的最终 URL
+            # 1) 跟随跳转后的最终 URL
             m = re.match(r'(https?://[^/]+)', final_url)
             if m:
                 domains.add(m.group(1))
 
-            # 2) 兜底：从 HTML 里找 canonical 链接
+            # 2) 兜底：canonical
             for m in re.findall(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)', html, re.I):
                 mm = re.match(r'(https?://[^/]+)', m)
                 if mm:
                     domains.add(mm.group(1))
 
-            # 3) 兜底：从 HTML 里找 JS 跳转目标
+            # 3) 兜底：JS 跳转
             for m in re.findall(r'(?:location\.href|location\.replace)\s*[=(]\s*["\']([^"\']+)', html, re.I):
                 mm = re.match(r'(https?://[^/]+)', m)
                 if mm:
                     domains.add(mm.group(1))
 
-        except urllib.error.HTTPError as e:
-            # 403/301/302 时 Location 头可能仍有值
-            print(f'[雨花阁] HTTP {e.code}，尝试从 Location 头拿跳转')
-            loc = e.headers.get('Location')
-            if loc:
-                m = re.match(r'(https?://[^/]+)', loc)
-                if m:
-                    domains.add(m.group(1))
         except Exception as e:
             print(f'[雨花阁] 入口 {entry} 失败: {e}')
 
@@ -343,6 +356,9 @@ def load_previous_domains():
 
 
 def main():
+    if not HAS_CFFI:
+        print('⚠️  未安装 curl_cffi，回退到 urllib。建议 pip install curl_cffi 以过 WAF。')
+
     previous = load_previous_domains()
 
     result = {
@@ -354,14 +370,12 @@ def main():
     }
 
     # 小草磁力：只提取，不验证
-    xiaocao_domains = extract_xiaocao_domains()
-    result['xiaocao'] = xiaocao_domains
+    result['xiaocao'] = extract_xiaocao_domains()
 
     # 磁力百科：只生成，不验证
-    cilibaike_domains = get_cilibaike_domains()
-    result['cilibaike'] = cilibaike_domains
+    result['cilibaike'] = get_cilibaike_domains()
 
-    # 虎风：从永久入口提取落地域名，失败时保留上次结果
+    # 虎风：失败时保留上次结果
     hufeng_domains = extract_hufeng_domains()
     if hufeng_domains:
         result['hufeng'] = hufeng_domains
@@ -371,7 +385,7 @@ def main():
             print(f'[虎风] 提取为空，保留上次的 {len(fallback)} 个域名')
         result['hufeng'] = fallback
 
-    # 雨花阁：从永久入口提取落地域名，失败时保留上次结果
+    # 雨花阁：失败时保留上次结果
     yuhuage_domains = extract_yuhuage_domains()
     if yuhuage_domains:
         result['yuhuage'] = yuhuage_domains
