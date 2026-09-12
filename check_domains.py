@@ -7,6 +7,7 @@
 4. 雨花阁（yuhuage）：通过 Cloudflare Pages Functions 代理请求 iyuhuage.fun
 5. U3C3（cctv10）：从永久入口 cctv10.cc 提取当前落地域名
 6. 磁力猫（cilimao）：从永久入口 clm.cc / clm.la / cilimao.biz 解码 JS 跳转拿落地域名
+7. 磁力搜（ciliso）：CONFIG 写死，用磁力百科同款算法生成子域名
 把生成的域名写入 domains.json，验证交给 Workers 运行时做
 
 依赖：curl_cffi（用于模拟 Chrome TLS 指纹，绕过 WAF 403）
@@ -61,6 +62,14 @@ CILIMAO_ENTRY_URLS = [
     'https://clm.la',
     'https://cilimao.biz',
 ]
+
+# ========== 磁力搜（cls，写死 CONFIG） ==========
+CILISO_CONFIG = {
+    'domains': ['3030117.xyz', '3030116.xyz', 'cls116.buzz'],
+    'intervalMinutes': 30,
+    'codeLength': 8,
+    'salt': 'address-page-2026',
+}
 
 OUTPUT_FILE = Path(__file__).parent / 'domains.json'
 
@@ -462,6 +471,13 @@ def extract_cilimao_domains():
     return result
 
 
+# ========== 磁力搜（cls） ==========
+def get_ciliso_domains():
+    """磁力搜：CONFIG 写死，用磁力百科同款算法生成子域名。"""
+    print(f'[磁力搜] 使用写死的 CONFIG: {CILISO_CONFIG}')
+    return build_cilibaike_domains(CILISO_CONFIG)
+
+
 def load_previous_domains():
     if not OUTPUT_FILE.exists():
         return {}
@@ -486,6 +502,7 @@ def main():
         'yuhuage': [],
         'cctv10': [],
         'cilimao': [],
+        'ciliso': [],
     }
 
     result['xiaocao'] = extract_xiaocao_domains()
@@ -527,6 +544,8 @@ def main():
             print(f'[磁力猫] 提取为空，保留上次的 {len(fallback)} 个域名')
         result['cilimao'] = fallback
 
+    result['ciliso'] = get_ciliso_domains()
+
     OUTPUT_FILE.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),
         encoding='utf-8',
@@ -540,6 +559,7 @@ def main():
     print(f'  雨花阁: {len(result["yuhuage"])} 个')
     print(f'  U3C3: {len(result["cctv10"])} 个')
     print(f'  磁力猫: {len(result["cilimao"])} 个')
+    print(f'  磁力搜: {len(result["ciliso"])} 个')
     if result['cctv10']:
         print('  U3C3 域名:')
         for d in result['cctv10']:
@@ -547,6 +567,10 @@ def main():
     if result['cilimao']:
         print('  磁力猫域名:')
         for d in result['cilimao']:
+            print(f'    - {d}')
+    if result['ciliso']:
+        print('  磁力搜域名:')
+        for d in result['ciliso']:
             print(f'    - {d}')
 
 
