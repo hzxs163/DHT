@@ -4,7 +4,7 @@
 1. 小草磁力：从 fwonggh/xccl 提取域名
 2. 磁力百科：从中转站页面提取 CONFIG，用算法算出子域名
 3. 虎风（hufeng）：从永久入口 ddcl.me / cltt.me 提取当前落地域名
-4. 雨花阁（yuhuage）：从永久入口 iyuhuage.fun 提取当前落地域名
+4. 雨花阁（yuhuage）：通过 Cloudflare Pages Functions 代理请求 iyuhuage.fun
 把生成的域名写入 domains.json，验证交给 Workers 运行时做
 
 依赖：curl_cffi（用于模拟 Chrome TLS 指纹，绕过 WAF 403）
@@ -45,6 +45,10 @@ HUFENG_DOMAIN_RE = re.compile(r'https?://(?:[\w-]+\.)*(?:hufeng|hf)[\w-]*\.[a-z]
 YUHUAGE_ENTRY_URLS = [
     'https://iyuhuage.fun',
 ]
+
+# Cloudflare Pages Functions 代理（Actions IP 过不了 CF 盾，走代理）
+# 把你的 Pages 域名填到这里
+YUHUAGE_PROXY_URL = 'https://soubt.pages.dev/proxy/yuhuage'
 
 OUTPUT_FILE = Path(__file__).parent / 'domains.json'
 
@@ -87,16 +91,6 @@ def fetch_url(url, timeout=15, headers=None, impersonate='chrome120'):
 def fetch_text(url, timeout=15, headers=None):
     text, _ = fetch_url(url, timeout=timeout, headers=headers)
     return text
-
-
-def fetch_url_urllib(url, timeout=15, headers=None):
-    h = {**HEADERS, **(headers or {})}
-    req = urllib.request.Request(url, headers=h)
-    ctx = ssl.create_default_context()
-    ctx.check_hostname = False
-    ctx.verify_mode = ssl.CERT_NONE
-    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
-        return resp.read().decode('utf-8', errors='replace'), resp.geturl()
 
 
 # ========== 小草磁力域名提取 ==========
@@ -232,7 +226,6 @@ def extract_hufeng_domains():
             print(f'[虎风] 入口页面长度: {len(html)}')
             print(f'[虎风] 入口最终 URL: {final_url}')
 
-            # ① HTTP 层跳转
             m = re.match(r'(https?://[^/]+)', final_url)
             if m and not any(h.replace('https://', '') in final_url for h in HUFENG_ENTRY_URLS):
                 url = m.group(1).rstrip('/')
@@ -240,7 +233,6 @@ def extract_hufeng_domains():
                     domains.add(url)
                     print(f'[虎风] HTTP 跳转到: {url}')
 
-            # ② atob + api.JS 三层解析
             entry_b64 = base64.b64encode(entry.encode()).decode()
             api_suffixes = []
             for b64 in re.findall(r'atob\([\'"]([^\'"]+)[\'"]\)', html):
@@ -280,7 +272,6 @@ def extract_hufeng_domains():
                 except Exception as e:
                     print(f'[虎风] api.JS 请求失败: {e}')
 
-            # ③ HTML 解析兜底
             for m in re.findall(r'http-equiv=["\']?refresh["\']?[^>]*content=["\']?[^;]+;\s*url=([^"\'>\s]+)', html, re.I):
                 mm = re.match(r'(?:https?:)?//([^/]+)', m)
                 if mm:
@@ -300,9 +291,6 @@ def extract_hufeng_domains():
                 if is_valid_domain_url(url):
                     domains.add(url)
 
-            for frag in re.findall(r'.{0,60}(?:hufeng|location|refresh).{0,60}', html, re.I):
-                print(f'[虎风] 片段: {frag!r}')
-
         except Exception as e:
             print(f'[虎风] 入口 {entry} 失败: {e}')
 
@@ -319,88 +307,64 @@ def extract_hufeng_domains():
     return result
 
 
-# ========== 雨花阁域名提取 ==========
+# ========== 雨花阁域名提取（走 Pages 代理） ==========
 def extract_yuhuage_domains():
     """
-    雨花阁：
-    - Actions 上 urllib 被 403，curl_cffi 能拿 HTML 但不跟跳转
-    - 所以用 curl_cffi 拿 HTML，从 HTML 里解析跳转目标
-    - HTML 里没有再用 urllib 兜底
+    雨花阁：Actions IP 过不了 Cloudflare 盾，走 Pages Functions 代理。
+    代理返回 JSON: {status, location, url, headers, body}
     """
     domains = set()
 
-    for entry in YUHUAGE_ENTRY_URLS:
-        print(f'[雨花阁] 请求入口: {entry}')
+    print(f'[雨花阁] 通过代理请求: {YUHUAGE_PROXY_URL}')
+    try:
+        text, _ = fetch_url(YUHUAGE_PROXY_URL, timeout=20)
+        data = json.loads(text)
+        print(f'[雨花阁] 代理返回 status={data.get("status")} location={data.get("location")}')
 
-        html = ''
-        final_url = entry
-        source = ''
-
-        # 尝试 1：curl_cffi
-        try:
-            html, final_url = fetch_url(entry, timeout=20)
-            source = 'curl_cffi'
-            print(f'[雨花阁] curl_cffi 最终 URL: {final_url}')
-            print(f'[雨花阁] curl_cffi 页面长度: {len(html)}')
-        except Exception as e:
-            print(f'[雨花阁] curl_cffi 失败: {e}')
-
-        # 尝试 2：urllib 兜底
-        if not html:
-            try:
-                html, final_url = fetch_url_urllib(entry, timeout=20)
-                source = 'urllib'
-                print(f'[雨花阁] urllib 最终 URL: {final_url}')
-                print(f'[雨花阁] urllib 页面长度: {len(html)}')
-            except Exception as e:
-                print(f'[雨花阁] urllib 失败: {e}')
-
-        if not html:
-            print(f'[雨花阁] 两种方式都失败')
-            continue
-
-        # 1) HTTP 跳转后的最终 URL
-        m = re.match(r'(https?://[^/]+)', final_url)
-        if m:
-            url = m.group(1).rstrip('/')
-            if not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
-                if is_valid_domain_url(url):
+        # 1) Location 头（302 跳转目标）
+        loc = data.get('location')
+        if loc:
+            m = re.match(r'(https?://[^/]+)', loc)
+            if m:
+                url = m.group(1).rstrip('/')
+                if is_valid_domain_url(url) and not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
                     domains.add(url)
-                    print(f'[雨花阁] HTTP 跳转到: {url}')
+                    print(f'[雨花阁] Location 拿到: {url}')
 
-        # 2) HTML 里的 mobile-agent meta
-        for m in re.findall(r'<meta[^>]+url=([^"\'>\s]+)', html, re.I):
+        # 2) 从 body 里解析 meta / JS / 域名
+        body = data.get('body', '')
+
+        for m in re.findall(r'<meta[^>]+url=([^"\'>\s]+)', body, re.I):
             mm = re.match(r'(?:https?:)?//([^/]+)', m)
             if mm:
                 url = f'https://{mm.group(1)}'.rstrip('/')
-                if not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
-                    if is_valid_domain_url(url):
-                        domains.add(url)
-                        print(f'[雨花阁] meta 解析到: {url}')
+                if is_valid_domain_url(url) and not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
+                    domains.add(url)
+                    print(f'[雨花阁] meta 解析到: {url}')
 
-        # 3) HTML 里的 location.href / location.replace
-        for m in re.findall(r'(?:location\.href|location\.replace|location\.assign)\s*[=(]\s*["\']([^"\']+)', html, re.I):
+        for m in re.findall(r'(?:location\.href|location\.replace|location\.assign)\s*[=(]\s*["\']([^"\']+)', body, re.I):
             mm = re.match(r'(?:https?:)?//([^/]+)', m)
             if mm:
                 url = f'https://{mm.group(1)}'.rstrip('/')
-                if not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
-                    if is_valid_domain_url(url):
-                        domains.add(url)
-                        print(f'[雨花阁] JS 解析到: {url}')
+                if is_valid_domain_url(url) and not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
+                    domains.add(url)
 
-        # 4) HTML 里所有 yuhuage 域名
-        for m in re.findall(r'(?:https?:)?//([\w.-]*yuhuage[\w.-]*\.[a-z]{2,})', html, re.I):
+        for m in re.findall(r'(?:https?:)?//([\w.-]*yuhuage[\w.-]*\.[a-z]{2,})', body, re.I):
             url = f'https://{m}'.rstrip('/')
-            if not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
-                if is_valid_domain_url(url):
-                    domains.add(url)
-                    print(f'[雨花阁] 域名解析到: {url}')
+            if is_valid_domain_url(url) and not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
+                domains.add(url)
 
-        # 5) 调试
-        if not domains:
-            print(f'[雨花阁] 页面来源: {source}')
-            for frag in re.findall(r'.{0,80}(?:yuhuage|location|href|meta).{0,80}', html, re.I):
-                print(f'[雨花阁] 片段: {frag!r}')
+        # 3) 兜底：从 url 字段拿
+        u = data.get('url')
+        if u:
+            m = re.match(r'(https?://[^/]+)', u)
+            if m:
+                url = m.group(1).rstrip('/')
+                if is_valid_domain_url(url) and not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
+                    domains.add(url)
+
+    except Exception as e:
+        print(f'[雨花阁] 代理请求失败: {e}')
 
     result = sorted(domains)
     print(f'[雨花阁] 提取到 {len(result)} 个落地域名')
