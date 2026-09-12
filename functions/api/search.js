@@ -1,5 +1,7 @@
 // Pages Functions - /api/search
 
+import domainsConfig from '../../domains.json';
+
 const JUNIORTER_API = 'https://torrent.juniorter.in/api/search-stream';
 const JUNIORTER_PROVIDERS = [
   'yts', 'eztv', 'torrentclaw', 'piratebay', 'knaben', '1337x', 'limetorrents',
@@ -36,13 +38,13 @@ export async function onRequest(context) {
       tasks.push({ name: '0magnet', promise: fetchFrom0Magnet(query, sort, page, waitUntil) });
     }
     if (sources.includes('xiaocao')) {
-      tasks.push({ name: 'xiaocao', promise: fetchFromXiaocao(query, page, sort, request, waitUntil) });
+      tasks.push({ name: 'xiaocao', promise: fetchFromXiaocao(query, page, sort, waitUntil) });
     }
     if (sources.includes('juniorter')) {
       tasks.push({ name: 'juniorter', promise: fetchFromJuniorter(query, page, sort, waitUntil) });
     }
     if (sources.includes('cilibaike')) {
-      tasks.push({ name: 'cilibaike', promise: fetchFromCilibaike(query, page, sort, request, waitUntil) });
+      tasks.push({ name: 'cilibaike', promise: fetchFromCilibaike(query, page, sort, waitUntil) });
     }
     if (sources.includes('knaben')) {
       tasks.push({ name: 'knaben', promise: fetchFromKnaben(query, page, sort, waitUntil) });
@@ -51,7 +53,7 @@ export async function onRequest(context) {
       tasks.push({ name: 'yuhuage', promise: fetchFromYuhuage(query, page, sort, waitUntil) });
     }
     if (sources.includes('hufeng')) {
-      tasks.push({ name: 'hufeng', promise: fetchFromHufeng(query, page, sort, request, waitUntil) });
+      tasks.push({ name: 'hufeng', promise: fetchFromHufeng(query, page, sort, waitUntil) });
     }
 
     const results = await Promise.allSettled(tasks.map(t => t.promise));
@@ -116,6 +118,16 @@ function formatBytes(bytes) {
   const i = Math.floor(Math.log(bytes) / Math.log(1024));
   const value = bytes / Math.pow(1024, i);
   return `${value.toFixed(2)} ${units[i]}`;
+}
+
+// ========== 读取 domains.json（直接 import，不走 fetch，绕过 Access） ==========
+function getDomainsConfig() {
+  const data = domainsConfig || {};
+  return {
+    xiaocao: Array.isArray(data.xiaocao) ? data.xiaocao : [],
+    cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
+    hufeng: Array.isArray(data.hufeng) ? data.hufeng : [],
+  };
 }
 
 // ========== Knaben ==========
@@ -194,28 +206,9 @@ function parseKnabenResults(data) {
   return items;
 }
 
-// ========== domains.json ==========
-async function getDomainsConfig(request) {
-  try {
-    const domainsUrl = new URL('/domains.json', request.url);
-    const res = await fetch(domainsUrl.toString());
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        xiaocao: Array.isArray(data.xiaocao) ? data.xiaocao : [],
-        cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
-        hufeng: Array.isArray(data.hufeng) ? data.hufeng : [],
-      };
-    }
-  } catch (err) {
-    console.error('Failed to load domains.json:', err);
-  }
-  return { xiaocao: [], cilibaike: [], hufeng: [] };
-}
-
 // ========== 磁力百科 ==========
-async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
-  const config = await getDomainsConfig(request);
+async function fetchFromCilibaike(query, page, sort, waitUntil) {
+  const config = getDomainsConfig();
   const domains = config.cilibaike;
   if (domains.length === 0) return [];
 
@@ -349,31 +342,50 @@ function getXiaocaoSortPath(sort) {
   }
 }
 
-// !!! 下面是临时调试版：不再抓取，直接把 domains.json 的内容通过 API 返回，用来排查问题。
-// 排查完记得换回原版 fetchFromXiaocao。
-async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
-  const config = await getDomainsConfig(request);
+async function fetchFromXiaocao(query, page, sort, waitUntil) {
+  const config = getDomainsConfig();
   const domains = config.xiaocao;
+  if (domains.length === 0) return [];
+  const sortPath = getXiaocaoSortPath(sort);
 
-  if (domains.length === 0) {
-    return [{
-      name: '[DEBUG] domains 为空（getDomainsConfig 没读到 xiaocao）',
-      size: '',
-      date: '',
-      magnet: '',
-      detailUrl: '',
-      source: 'xiaocao-debug',
-    }];
+  for (const domain of domains) {
+    try {
+      const html = await fetchWithCache(`${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`, 3600, waitUntil);
+      if (!html.includes('search-item')) continue;
+      const items = parseXiaocaoResults(html, domain);
+      if (items.length > 0) return items;
+    } catch (err) {
+      console.error(`Xiaocao domain ${domain} failed:`, err);
+    }
   }
+  return [];
+}
 
-  return domains.map((d, i) => ({
-    name: `[DEBUG] 第 ${i + 1} 个域名：${d}`,
-    size: '',
-    date: '',
-    magnet: '',
-    detailUrl: '',
-    source: 'xiaocao-debug',
-  }));
+function parseXiaocaoResults(html, domain) {
+  const items = [];
+  const parts = html.split(/<div class="search-item[^"]*">/);
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+    const titleMatch = block.match(/<a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/);
+    if (!titleMatch) continue;
+    const name = titleMatch[3].replace(/<[^>]+>/g, '').trim();
+    if (!name) continue;
+
+    const sizeMatch = block.match(/文件大小:\s*<b[^>]*>([^<]+)<\/b>/);
+    const dateMatch = block.match(/创建时间:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
+    const hotMatch = block.match(/下载热度:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
+
+    items.push({
+      name,
+      size: sizeMatch ? sizeMatch[1].trim() : '',
+      date: dateMatch ? dateMatch[1].trim() : '',
+      hot: hotMatch ? hotMatch[1].trim() : '',
+      magnet: `magnet:?xt=urn:btih:${titleMatch[2]}`,
+      detailUrl: `${domain}${titleMatch[1]}`,
+      source: 'xiaocao',
+    });
+  }
+  return items;
 }
 
 // ========== ØMagnet ==========
@@ -506,8 +518,8 @@ function parseYuhuageResults(html) {
 }
 
 // ========== 虎风 ==========
-async function fetchFromHufeng(query, page, sort, request, waitUntil) {
-  const config = await getDomainsConfig(request);
+async function fetchFromHufeng(query, page, sort, waitUntil) {
+  const config = getDomainsConfig();
   const domains = config.hufeng;
   if (domains.length === 0) {
     console.warn('Hufeng: no available domains');
