@@ -44,7 +44,6 @@
     body {
       font-family: var(--font-sans);
       background: var(--bg);
-      /* 宣纸质感：极淡的噪点纹理 */
       background-image:
         radial-gradient(rgba(140,110,70,0.035) 1px, transparent 1px),
         radial-gradient(rgba(140,110,70,0.025) 1px, transparent 1px);
@@ -82,7 +81,6 @@
 
     .header.compact .logo { font-size: 22px; margin-bottom: 16px; letter-spacing: 1px; }
 
-    /* ---------- qBittorrent 齿轮按钮 ---------- */
     .qb-gear {
       position: absolute;
       top: 60px;
@@ -148,7 +146,6 @@
       box-shadow: 0 0 0 3px rgba(138,106,74,0.08);
     }
 
-    /* X 清除按钮 */
     .search-clear {
       position: absolute;
       top: 50%;
@@ -194,7 +191,6 @@
     .search-btn:hover { background: var(--accent-hover); }
     .search-btn:disabled { background: #c4b8a3; cursor: not-allowed; }
 
-    /* ---------- 源 chips ---------- */
     .chips {
       display: flex;
       flex-wrap: wrap;
@@ -415,7 +411,6 @@
     .qb-btn.ok { background: var(--jade); }
     .qb-btn.bad { background: var(--red); }
 
-    /* ---------- 弹窗 ---------- */
     .qb-modal-backdrop {
       position: fixed;
       inset: 0;
@@ -521,7 +516,6 @@
 
     .qb-modal-foot button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
 
-    /* ---------- 分页 ---------- */
     .pagination {
       display: flex;
       justify-content: center;
@@ -610,7 +604,6 @@
 
     .empty-state .retry-btn:hover { background: var(--accent-hover); }
 
-    /* ---------- 热门搜索 ---------- */
     .hot-searches { margin-top: 28px; text-align: center; }
 
     .hot-searches .label {
@@ -758,6 +751,7 @@
       { id: 'knaben',    label: 'Knaben' },
       { id: 'yuhuage',   label: '雨花阁' },
       { id: 'hufeng',    label: '虎风' },
+      { id: 'cctv10',    label: 'U3C3' },
     ];
 
     const DEFAULT_SOURCES = ['0magnet'];
@@ -905,7 +899,6 @@
     let isLoading = false;
     const selectedSources = new Set(DEFAULT_SOURCES);
 
-    // ---------- X 清除按钮 ----------
     function updateClearBtn() {
       if (searchInput.value.length > 0) {
         searchInputWrap.classList.add('has-value');
@@ -921,7 +914,6 @@
       searchInput.focus();
     });
 
-    // ---------- chips ----------
     function buildChips() {
       chipsEl.replaceChildren();
       for (const s of SOURCES) {
@@ -950,7 +942,6 @@
     loadQbConfig();
     buildChips();
 
-    // ---------- 搜索 ----------
     searchForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const q = searchInput.value.trim();
