@@ -13,11 +13,6 @@ const JUNIORTER_PROVIDERS = [
 
 const KNABEN_API = 'https://api.knaben.org/v1';
 
-// U3C3 (cctv10) 域名列表
-const CCTV10_DOMAINS = [
-  'https://u3c3u3c3.u3c3u3c3u3c3.com',
-];
-
 export async function onRequest(context) {
   const { request, waitUntil } = context;
   const url = new URL(request.url);
@@ -134,6 +129,7 @@ function getDomainsConfig() {
     cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
     hufeng: Array.isArray(data.hufeng) ? data.hufeng : [],
     yuhuage: Array.isArray(data.yuhuage) ? data.yuhuage : [],
+    cctv10: Array.isArray(data.cctv10) ? data.cctv10 : [],
   };
 }
 
@@ -559,9 +555,13 @@ function parseHufengResults(html, domain) {
 
 // ========== U3C3 (cctv10) ==========
 async function fetchFromCctv10(query, page, sort, waitUntil) {
+  const config = getDomainsConfig();
+  const domains = config.cctv10;
+  if (domains.length === 0) return [];
+
   const searchPath = `/?search2=uowt4hvn&search=${encodeURIComponent(query)}&p=${page}`;
 
-  for (const domain of CCTV10_DOMAINS) {
+  for (const domain of domains) {
     try {
       const html = await fetchWithCache(`${domain}${searchPath}`, 3600, waitUntil);
       if (!html.includes('torrent-list')) continue;
