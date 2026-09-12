@@ -4,6 +4,7 @@
 1. 小草磁力：从 fwonggh/xccl 提取域名
 2. 磁力百科：从中转站页面提取 CONFIG，用算法算出子域名
 3. 虎风（hufeng）：从永久入口 ddcl.me / cltt.me 跟随跳转，提取当前落地域名
+4. 雨花阁（yuhuage）：从永久入口 iyuhuage.fun 跟随跳转，提取当前落地域名
 把生成的域名写入 domains.json，验证交给 Workers 运行时做
 """
 
@@ -31,6 +32,11 @@ HUFENG_ENTRY_URLS = [
 
 # 落地域名特征：通常是 hufeng.xxx 或类似
 HUFENG_DOMAIN_RE = re.compile(r'https?://(?:[\w-]+\.)*(?:hufeng|hf)[\w-]*\.[a-z]{2,}', re.I)
+
+# ========== 雨花阁永久入口 ==========
+YUHUAGE_ENTRY_URLS = [
+    'https://iyuhuage.fun',
+]
 
 OUTPUT_FILE = Path(__file__).parent / 'domains.json'
 
@@ -259,6 +265,55 @@ def extract_hufeng_domains():
     return result
 
 
+# ========== 雨花阁域名提取 ==========
+def extract_yuhuage_domains():
+    """
+    雨花阁永久入口 iyuhuage.fun 是 HTTP 301/302 跳转，
+    请求后 urllib 会自动跟随，resp.geturl() 就是当前落地域名。
+    """
+    domains = set()
+
+    browser_headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
+    }
+
+    for entry in YUHUAGE_ENTRY_URLS:
+        print(f'[雨花阁] 请求入口: {entry}')
+        try:
+            req = urllib.request.Request(entry, headers={**browser_headers, 'Referer': entry + '/'})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                final_url = resp.geturl()
+                html = resp.read().decode('utf-8', errors='replace')
+
+            print(f'[雨花阁] 最终 URL: {final_url}')
+            print(f'[雨花阁] 页面长度: {len(html)}')
+
+            # 1) urllib 跟随跳转后的最终 URL
+            m = re.match(r'(https?://[^/]+)', final_url)
+            if m:
+                domains.add(m.group(1))
+
+            # 2) 兜底：从 HTML 里找 canonical 链接
+            for m in re.findall(r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)', html, re.I):
+                mm = re.match(r'(https?://[^/]+)', m)
+                if mm:
+                    domains.add(mm.group(1))
+
+        except Exception as e:
+            print(f'[雨花阁] 入口 {entry} 失败: {e}')
+
+    result = sorted(
+        d for d in domains
+        if not any(entry_host in d for entry_host in YUHUAGE_ENTRY_URLS)
+    )
+    print(f'[雨花阁] 提取到 {len(result)} 个落地域名')
+    for d in result:
+        print(f'    - {d}')
+    return result
+
+
 def load_previous_domains():
     """读取上一次生成的 domains.json，用于保底"""
     if not OUTPUT_FILE.exists():
@@ -278,6 +333,7 @@ def main():
         'xiaocao': [],
         'cilibaike': [],
         'hufeng': [],
+        'yuhuage': [],
     }
 
     # 小草磁力：只提取，不验证
@@ -298,6 +354,16 @@ def main():
             print(f'[虎风] 提取为空，保留上次的 {len(fallback)} 个域名')
         result['hufeng'] = fallback
 
+    # 雨花阁：从永久入口提取落地域名，失败时保留上次结果
+    yuhuage_domains = extract_yuhuage_domains()
+    if yuhuage_domains:
+        result['yuhuage'] = yuhuage_domains
+    else:
+        fallback = previous.get('yuhuage', [])
+        if fallback:
+            print(f'[雨花阁] 提取为空，保留上次的 {len(fallback)} 个域名')
+        result['yuhuage'] = fallback
+
     OUTPUT_FILE.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),
         encoding='utf-8',
@@ -308,6 +374,7 @@ def main():
     print(f'  小草磁力: {len(result["xiaocao"])} 个')
     print(f'  磁力百科: {len(result["cilibaike"])} 个')
     print(f'  虎风: {len(result["hufeng"])} 个')
+    print(f'  雨花阁: {len(result["yuhuage"])} 个')
     if result['cilibaike']:
         print('  磁力百科域名:')
         for d in result['cilibaike']:
@@ -315,6 +382,10 @@ def main():
     if result['hufeng']:
         print('  虎风域名:')
         for d in result['hufeng']:
+            print(f'    - {d}')
+    if result['yuhuage']:
+        print('  雨花阁域名:')
+        for d in result['yuhuage']:
             print(f'    - {d}')
 
 
