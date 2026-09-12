@@ -1,4 +1,4 @@
-name: 域名更新
+name: 域名定时更新工作流
 
 on:
   schedule:
