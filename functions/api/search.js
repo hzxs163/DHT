@@ -13,7 +13,6 @@ const JUNIORTER_PROVIDERS = [
 
 const KNABEN_API = 'https://api.knaben.org/v1';
 
-// cctv10 调试用全局
 let CCTV10_DEBUG = {};
 
 export async function onRequest(context) {
@@ -23,7 +22,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage,hufeng,cctv10';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage,hufeng,cctv10,cilimao';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -60,6 +59,9 @@ export async function onRequest(context) {
     }
     if (sources.includes('cctv10')) {
       tasks.push({ name: 'cctv10', promise: fetchFromCctv10(query, page, sort, waitUntil) });
+    }
+    if (sources.includes('cilimao')) {
+      tasks.push({ name: 'cilimao', promise: fetchFromCilimao(query, page, sort, waitUntil) });
     }
 
     const results = await Promise.allSettled(tasks.map(t => t.promise));
@@ -136,6 +138,7 @@ function getDomainsConfig() {
     hufeng: Array.isArray(data.hufeng) ? data.hufeng : [],
     yuhuage: Array.isArray(data.yuhuage) ? data.yuhuage : [],
     cctv10: Array.isArray(data.cctv10) ? data.cctv10 : [],
+    cilimao: Array.isArray(data.cilimao) ? data.cilimao : [],
   };
 }
 
@@ -453,9 +456,7 @@ async function batchFetch0MagnetDetails(items, concurrency, waitUntil) {
             source: '0magnet',
           });
         }
-      } catch (e) {
-        // 忽略单个失败
-      }
+      } catch (e) {}
     }
   }
 
@@ -575,8 +576,6 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
       CCTV10_DEBUG.homeHasNmefafej = homeHtml.includes('nmefafej');
 
       let search2 = null;
-
-      // 取所有 nmefafej，用最后一个（排除被注释的旧值）
       const matches = [...homeHtml.matchAll(/nmefafej\s*=\s*["']([a-zA-Z0-9]+)["']/g)];
       CCTV10_DEBUG.matches = matches.map(m => m[1]);
       if (matches.length > 0) {
@@ -592,7 +591,6 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
 
       if (!search2) {
         CCTV10_DEBUG.error = 'no search2 found';
-        CCTV10_DEBUG.homeHead = homeHtml.slice(0, 1000);
         continue;
       }
 
@@ -607,7 +605,6 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
       if (!html.includes('torrent-list')) continue;
       const items = parseCctv10Results(html, domain);
       CCTV10_DEBUG.parsedCount = items.length;
-      CCTV10_DEBUG.firstItem = items.length > 0 ? items[0].name : null;
 
       if (items.length > 0) return items;
     } catch (err) {
@@ -624,13 +621,11 @@ function parseCctv10Results(html, domain) {
   for (let i = 1; i < parts.length; i++) {
     const block = parts[i];
 
-    // magnet 链接：<a href="magnet:?xt=urn:btih:xxx&tr=...">
     const magnetMatch = block.match(/href="(magnet:\?xt=urn:btih:([a-fA-F0-9]{40})[^"]*)"/);
     if (!magnetMatch) continue;
     const magnet = simplifyMagnet(magnetMatch[1]);
     const infoHash = magnetMatch[2];
 
-    // 标题：<a href="/view?id=...">...</a>
     const titleMatch = block.match(/<a href="\/view\?id=[^"]+"[^>]*>([\s\S]*?)<\/a>/);
     if (!titleMatch) continue;
     let name = titleMatch[1]
@@ -640,7 +635,6 @@ function parseCctv10Results(html, domain) {
       .trim();
     if (!name) continue;
 
-    // 大小、日期：从 <td class="text-center"> 里提
     const tds = block.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
     let size = '';
     let date = '';
@@ -664,6 +658,90 @@ function parseCctv10Results(html, domain) {
     });
   }
   return items;
+}
+
+// ========== 磁力猫 ==========
+function decodeAtobHtml(html) {
+  const m = html.match(/window\.atob\("([^"]+)"\)/);
+  if (!m) return null;
+  try {
+    return decodeURIComponent(atob(m[1]));
+  } catch (e) {
+    return null;
+  }
+}
+
+async function fetchFromCilimao(query, page, sort, waitUntil) {
+  const config = getDomainsConfig();
+  const domains = config.cilimao;
+  if (domains.length === 0) return [];
+
+  const wordB64 = btoa(query).replace(/=+$/, '');
+
+  for (const domain of domains) {
+    try {
+      const searchUrl = `${domain}/search?word=${wordB64}&sort=rele&p=${page}`;
+      const html = await fetchWithCache(searchUrl, 1800, waitUntil);
+      const decoded = decodeAtobHtml(html);
+      if (!decoded) continue;
+
+      const links = [];
+      const linkRe = /<a[^>]+href="(\/information\/[a-zA-Z0-9]+)"[^>]*>([\s\S]*?)<\/a>/g;
+      let m;
+      while ((m = linkRe.exec(decoded)) !== null) {
+        const detailPath = m[1];
+        const name = m[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        if (name) links.push({ detailPath, name });
+      }
+
+      if (links.length === 0) continue;
+
+      const items = await batchFetchCilimaoDetails(links, 5, domain, waitUntil);
+      if (items.length > 0) return items;
+    } catch (err) {
+      console.error(`Cilimao domain ${domain} failed:`, err);
+    }
+  }
+  return [];
+}
+
+async function batchFetchCilimaoDetails(links, concurrency, domain, waitUntil) {
+  const results = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < links.length) {
+      const i = index++;
+      const link = links[i];
+      try {
+        const detailUrl = `${domain}${link.detailPath}`;
+        const html = await fetchWithCache(detailUrl, 3600, waitUntil);
+        const decoded = decodeAtobHtml(html);
+        if (!decoded) continue;
+
+        const magnetMatch = decoded.match(/href="(magnet:\?xt=urn:btih:[a-fA-F0-9]{40}[^"]*)"/);
+        if (!magnetMatch) continue;
+        const magnet = simplifyMagnet(magnetMatch[1]);
+
+        const sizeMatch = decoded.match(/文件大小：<\/b>([^<]+)<\/b>/);
+        const dateMatch = decoded.match(/收录时间：<\/b>\s*([^<]+)/);
+
+        results.push({
+          name: link.name,
+          size: sizeMatch ? sizeMatch[1].trim() : '',
+          date: dateMatch ? dateMatch[1].trim() : '',
+          magnet,
+          detailUrl,
+          source: 'cilimao',
+        });
+      } catch (e) {}
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < concurrency; i++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
 }
 
 // ========== 工具函数 ==========
