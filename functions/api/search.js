@@ -397,11 +397,186 @@ async function fetchFrom0Magnet(query, sort, page, waitUntil) {
 
 async function parse0MagnetSearchResults(html) {
   const items = [];
-  let currentItem = null;
-  const rewriter = new HTMLRewriter()
-    .on('table.file-list tbody tr', {
-      element(el) {
-        if (currentItem) items.push(currentItem);
-        currentItem = { name: '', size: '', date: '', detailPath: '', source: '0magnet' };
+  const parts = html.split(/<tr[^>]*>/);
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+    const linkMatch = block.match(/<a[^>]+href="([^"]+)"[^>]*>([\s\S]*?)<\/a>/);
+    if (!linkMatch) continue;
+    const detailPath = linkMatch[1];
+    const name = linkMatch[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (!name || !detailPath.includes('/')) continue;
+
+    const sizeMatch = block.match(/<td[^>]*>\s*(\d+(?:\.\d+)?\s*(?:B|KB|MB|GB|TB))\s*<\/td>/i);
+
+    items.push({
+      name,
+      size: sizeMatch ? sizeMatch[1].trim() : '',
+      date: '',
+      detailPath,
+      source: '0magnet',
+    });
+  }
+  return items;
+}
+
+async function batchFetch0MagnetDetails(items, concurrency, waitUntil) {
+  const results = [];
+  let index = 0;
+
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      const item = items[i];
+      try {
+        const detailUrl = item.detailPath.startsWith('http')
+          ? item.detailPath
+          : `https://0magnet.com${item.detailPath}`;
+        const html = await fetchWithCache(detailUrl, 3600, waitUntil);
+        const magnetMatch = html.match(/magnet:\?xt=urn:btih:[a-zA-Z0-9]{32,40}/);
+        if (magnetMatch) {
+          results.push({
+            name: item.name,
+            size: item.size,
+            date: item.date,
+            magnet: simplifyMagnet(magnetMatch[0]),
+            detailUrl,
+            source: '0magnet',
+          });
+        }
+      } catch (e) {
+        // 忽略单个失败
+      }
+    }
+  }
+
+  const workers = [];
+  for (let i = 0; i < concurrency; i++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
+
+// ========== 雨花阁 ==========
+async function fetchFromYuhuage(query, page, sort, waitUntil) {
+  const config = getDomainsConfig();
+  const domains = config.yuhuage;
+  if (domains.length === 0) return [];
+
+  const searchPath = `/search/${encodeURIComponent(query)}-${page}.html`;
+
+  for (const domain of domains) {
+    try {
+      const html = await fetchWithCache(`${domain}${searchPath}`, 3600, waitUntil);
+      const items = parseYuhuageResults(html, domain);
+      if (items.length > 0) return items;
+    } catch (err) {
+      console.error(`Yuhuage domain ${domain} failed:`, err);
+    }
+  }
+  return [];
+}
+
+function parseYuhuageResults(html, domain) {
+  const items = [];
+  const re = /<a[^>]+href="(\/(?:hash|detail)\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const detailPath = m[1];
+    const infoHash = m[2];
+    let name = m[3].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (!name) continue;
+    items.push({
+      name,
+      size: '',
+      date: '',
+      magnet: `magnet:?xt=urn:btih:${infoHash}`,
+      detailUrl: `${domain}${detailPath}`,
+      source: 'yuhuage',
+    });
+  }
+  return items;
+}
+
+// ========== 虎风 ==========
+async function fetchFromHufeng(query, page, sort, waitUntil) {
+  const config = getDomainsConfig();
+  const domains = config.hufeng;
+  if (domains.length === 0) return [];
+
+  const searchPath = `/search/${encodeURIComponent(query)}-${page}.html`;
+
+  for (const domain of domains) {
+    try {
+      const html = await fetchWithCache(`${domain}${searchPath}`, 3600, waitUntil);
+      const items = parseHufengResults(html, domain);
+      if (items.length > 0) return items;
+    } catch (err) {
+      console.error(`Hufeng domain ${domain} failed:`, err);
+    }
+  }
+  return [];
+}
+
+function parseHufengResults(html, domain) {
+  const items = [];
+  const re = /<a[^>]+href="(\/(?:hash|detail|info)\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/g;
+  let m;
+  while ((m = re.exec(html)) !== null) {
+    const detailPath = m[1];
+    const infoHash = m[2];
+    let name = m[3].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    if (!name) continue;
+    items.push({
+      name,
+      size: '',
+      date: '',
+      magnet: `magnet:?xt=urn:btih:${infoHash}`,
+      detailUrl: `${domain}${detailPath}`,
+      source: 'hufeng',
+    });
+  }
+  return items;
+}
+
+// ========== 工具函数 ==========
+async function fetchWithCache(url, ttl, waitUntil) {
+  const cacheKey = new Request(url, { method: 'GET' });
+  const cache = caches.default;
+
+  let response = await cache.match(cacheKey);
+  if (!response) {
+    response = await fetch(url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'zh-CN,zh;q=0.9',
       },
-    })
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status} for ${url}`);
+
+    const text = await response.clone().text();
+    const cacheResponse = new Response(text, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': `public, max-age=${ttl}`,
+      },
+    });
+    if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
+    else await cache.put(cacheKey, cacheResponse);
+
+    response = new Response(text, {
+      headers: { 'Content-Type': 'text/html; charset=utf-8' },
+    });
+  }
+
+  return await response.text();
+}
+
+function jsonResponse(data, status = 200) {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+    },
+  });
+}
