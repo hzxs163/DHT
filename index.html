@@ -66,7 +66,6 @@
 
     .header.compact .logo { font-size: 22px; margin-bottom: 16px; }
 
-    /* ---------- qBittorrent 齿轮按钮 ---------- */
     .qb-gear {
       position: absolute;
       top: 60px;
@@ -322,7 +321,6 @@
       border-radius: 10px;
     }
 
-    /* ---------- 磁力行 ---------- */
     .magnet-row {
       display: flex;
       align-items: center;
@@ -376,7 +374,6 @@
       .magnet-copy-hint { display: none; }
     }
 
-    /* ---------- qBittorrent 下载按钮 ---------- */
     .qb-btn {
       flex-shrink: 0;
       display: inline-flex;
@@ -400,7 +397,6 @@
     .qb-btn.ok { background: var(--green); }
     .qb-btn.bad { background: var(--red); }
 
-    /* ---------- 设置弹窗 ---------- */
     .qb-modal-backdrop {
       position: fixed;
       inset: 0;
@@ -498,7 +494,6 @@
 
     .qb-modal-foot button.primary:hover { background: var(--accent-hover); }
 
-    /* ---------- 分页 ---------- */
     .pagination {
       display: flex;
       justify-content: center;
@@ -647,7 +642,7 @@
             <a href="javascript:void(0)" id="clearAllSources">清空</a>
           </div>
           <label class="source-option">
-            <input type="checkbox" value="0magnet">
+            <input type="checkbox" value="0magnet" checked>
             <span>ØMagnet</span>
           </label>
           <label class="source-option">
@@ -655,8 +650,8 @@
             <span>小草磁力</span>
           </label>
           <label class="source-option">
-            <input type="checkbox" value="0magnet" checked>
-            <span>ØMagnet</span>
+            <input type="checkbox" value="juniorter">
+            <span>Juniorter</span>
           </label>
           <label class="source-option">
             <input type="checkbox" value="cilibaike">
@@ -709,7 +704,6 @@
     免责声明 · 本站仅聚合第三方搜索结果，不存储任何资源
   </footer>
 
-  <!-- qBittorrent 设置弹窗 -->
   <div class="qb-modal-backdrop" id="qbModal">
     <div class="qb-modal">
       <div class="qb-modal-head">qBittorrent 设置</div>
@@ -748,8 +742,6 @@
     const QB_STORAGE_KEY = 'qb_config';
     const QB_DEFAULT = { url: 'https://qb.step.cc.cd', user: '', pass: '' };
     let qbConfig = { ...QB_DEFAULT };
-    // 当前会话里每个磁力的发送状态: magnet -> 'sending' | 'ok' | 'bad'
-    const qbState = new Map();
 
     function loadQbConfig() {
       try {
@@ -776,7 +768,6 @@
       }
     }
 
-    // ---------- 设置弹窗 ----------
     const qbModal = document.getElementById('qbModal');
     const qbUrlInput = document.getElementById('qbUrl');
     const qbUserInput = document.getElementById('qbUser');
@@ -817,12 +808,10 @@
       setTimeout(closeQbModal, 600);
     });
 
-    // 点背景关闭
     qbModal.addEventListener('click', (e) => {
       if (e.target === qbModal) closeQbModal();
     });
 
-    // ---------- 推送到 qBittorrent ----------
     async function pushToQb(magnet, btn) {
       if (!qbConfig.url || !qbConfig.user) {
         openQbModal();
@@ -834,7 +823,6 @@
       btn.className = 'qb-btn';
 
       try {
-        // 登录
         const loginRes = await fetch(qbConfig.url + '/api/v2/auth/login', {
           method: 'POST',
           credentials: 'include',
@@ -847,7 +835,6 @@
           throw new Error('登录失败，检查用户名密码');
         }
 
-        // 添加磁力
         const addRes = await fetch(qbConfig.url + '/api/v2/torrents/add', {
           method: 'POST',
           credentials: 'include',
@@ -878,7 +865,6 @@
       }
     }
 
-    // ---------- 其他变量 ----------
     const header = document.getElementById('header');
     const searchForm = document.getElementById('searchForm');
     const searchInput = document.getElementById('searchInput');
@@ -896,7 +882,6 @@
     let currentSort = 'newest';
     let isLoading = false;
 
-    // ---------- 初始化 ----------
     (function initSources() {
       const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
       checkboxes.forEach(c => {
@@ -907,7 +892,6 @@
 
     loadQbConfig();
 
-    // ---------- 数据源下拉交互 ----------
     sourceBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       sourceMenu.classList.toggle('open');
@@ -942,8 +926,7 @@
       const checked = Array.from(checkboxes).filter(c => c.checked);
 
       if (checked.length === 0) {
-        checkboxes.forEach(c => c.checked = true);
-        sourceLabel.textContent = '全部源';
+        sourceLabel.textContent = '未选择';
         return;
       }
 
@@ -960,13 +943,9 @@
     function getSelectedSources() {
       const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
       const checked = Array.from(checkboxes).filter(c => c.checked);
-      if (checked.length === 0) {
-        return Array.from(checkboxes).map(c => c.value);
-      }
       return checked.map(c => c.value);
     }
 
-    // ---------- 搜索 ----------
     searchForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const q = searchInput.value.trim();
@@ -983,8 +962,14 @@
 
     async function doSearch(query, page = 1) {
       if (isLoading) return;
-      isLoading = true;
 
+      const sources = getSelectedSources();
+      if (sources.length === 0) {
+        alert('请至少选择一个源');
+        return;
+      }
+
+      isLoading = true;
       currentQuery = query;
       currentPage = page;
 
@@ -1010,8 +995,7 @@
       }
 
       try {
-        const sources = getSelectedSources().join(',');
-        const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&page=${page}&sort=${currentSort}&sources=${encodeURIComponent(sources)}`;
+        const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&page=${page}&sort=${currentSort}&sources=${encodeURIComponent(sources.join(','))}`;
         const res = await fetch(url);
 
         if (!res.ok) {
@@ -1106,7 +1090,6 @@
 
       resultArea.innerHTML = html;
 
-      // 长按复制
       resultArea.querySelectorAll('.magnet-row').forEach(row => {
         const link = row.querySelector('.magnet-link');
         if (!link) return;
@@ -1137,7 +1120,6 @@
         });
       });
 
-      // qBittorrent 下载按钮
       resultArea.querySelectorAll('.qb-btn').forEach(btn => {
         btn.addEventListener('click', (e) => {
           e.preventDefault();
