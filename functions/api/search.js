@@ -16,7 +16,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -46,12 +46,6 @@ export async function onRequest(context) {
         promise: fetchFromJuniorter(query, page, sort, waitUntil),
       });
     }
-    if (sources.includes('cilibaike')) {
-      tasks.push({
-        name: 'cilibaike',
-        promise: fetchFromCilibaike(query, page, sort, request, waitUntil),
-      });
-    }
 
     const results = await Promise.allSettled(tasks.map(t => t.promise));
 
@@ -72,6 +66,7 @@ export async function onRequest(context) {
       }
     });
 
+    // 去重：优先按 info_hash，没有 hash 时按名称
     const seen = new Set();
     const deduped = [];
     for (const item of allItems) {
@@ -112,126 +107,10 @@ function simplifyMagnet(magnet) {
   return magnet;
 }
 
-// ========== 读取 domains.json ==========
-async function getDomainsConfig(request) {
-  try {
-    const domainsUrl = new URL('/domains.json', request.url);
-    const res = await fetch(domainsUrl.toString());
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        xiaocao: Array.isArray(data.xiaocao) ? data.xiaocao : [],
-        cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
-      };
-    }
-  } catch (err) {
-    console.error('Failed to load domains.json:', err);
-  }
-  return { xiaocao: [], cilibaike: [] };
-}
-
-// ========== 磁力百科数据源 ==========
-async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
-  const config = await getDomainsConfig(request);
-  const domains = config.cilibaike;
-
-  if (domains.length === 0) {
-    console.warn('Cilibaike: no available domains');
-    return [];
-  }
-
-  // 排序映射：cilibaike 的 order 参数
-  // 0=相关度, 1=体积最大, 2=最新添加, 3=热度, 4=最近发现
-  let order = '0';
-  switch (sort) {
-    case 'length': order = '1'; break;
-    case 'time':
-    case 'newest': order = '2'; break;
-    case 'requests': order = '3'; break;
-    case 'relevance':
-    default: order = '0'; break;
-  }
-
-  // 搜索 URL 格式：/search-关键词-分类-排序-页码.html
-  // 分类 0 = 全部
-  const searchPath = `/search-${encodeURIComponent(query)}-0-${order}-${page}.html`;
-
-  for (const domain of domains) {
-    try {
-      const searchUrl = `${domain}${searchPath}?lang=zh_CN`;
-      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
-
-      // 检查是否有结果
-      if (!html.includes('resource-card')) {
-        console.warn(`Cilibaike domain ${domain} returned no results, trying next`);
-        continue;
-      }
-
-      const items = parseCilibaikeResults(html, domain);
-      if (items.length > 0) {
-        console.log(`Cilibaike using domain: ${domain}`);
-        return items;
-      }
-    } catch (err) {
-      console.error(`Cilibaike domain ${domain} failed:`, err);
-    }
-  }
-
-  return [];
-}
-
-function parseCilibaikeResults(html, domain) {
-  const items = [];
-
-  // 每个结果是一个 article.resource-card
-  // 用 split 按起始标签切分
-  const parts = html.split(/<article class="resource resource-card"[^>]*>/);
-  for (let i = 1; i < parts.length; i++) {
-    const block = parts[i];
-
-    // 标题和详情页路径：<h2><a href="/hash/<40位hash>.html">...</a></h2>
-    const titleMatch = block.match(/<h2><a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a><\/h2>/);
-    if (!titleMatch) continue;
-
-    const detailPath = titleMatch[1];
-    const infoHash = titleMatch[2];
-    let name = titleMatch[3]
-      .replace(/<[^>]+>/g, '')     // 去掉标签
-      .replace(/\s+/g, ' ')         // 合并空白
-      .trim();
-    // 去掉分类前缀，如 【影视】
-    name = name.replace(/^【[^】]+】\s*/, '');
-    if (!name) continue;
-
-    // 元信息：<div class="meta resource-meta">...</div>
-    const metaMatch = block.match(/<div class="meta resource-meta">([\s\S]*?)<\/div>/);
-    let size = '';
-    let date = '';
-
-    if (metaMatch) {
-      const meta = metaMatch[1];
-      const sizeMatch = meta.match(/大小：\s*<span>([^<]+)<\/span>/);
-      const dateMatch = meta.match(/添加时间：\s*<span>([^<]+)<\/span>/);
-      if (sizeMatch) size = sizeMatch[1].trim();
-      if (dateMatch) date = dateMatch[1].trim();
-    }
-
-    items.push({
-      name,
-      size,
-      date,
-      magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `${domain}${detailPath}`,
-      source: 'cilibaike',
-    });
-  }
-
-  return items;
-}
-
-// ========== Juniorter 数据源 ==========
+// ========== Juniorter 数据源（API + SSE） ==========
 async function fetchFromJuniorter(query, page, sort, waitUntil) {
   const juniorterSort = (sort === 'time' || sort === 'newest') ? 'date' : 'seeds';
+
   const apiUrl = `${JUNIORTER_API}?q=${encodeURIComponent(query)}&sort=${juniorterSort}&pageSize=50&providers=${encodeURIComponent(JUNIORTER_PROVIDERS)}`;
 
   const cacheKey = new Request(apiUrl, { method: 'GET' });
@@ -299,7 +178,7 @@ function parseJuniorterSSE(text) {
             }
           }
         } catch (e) {
-          // 忽略
+          // 忽略解析失败的事件
         }
       }
       currentEvent = null;
@@ -310,81 +189,27 @@ function parseJuniorterSSE(text) {
   return items;
 }
 
-// ========== 小草磁力数据源 ==========
-function getXiaocaoSortPath(sort) {
-  switch (sort) {
-    case 'length': return '-length';
-    case 'time': return '-time';
-    case 'requests': return '-requests';
-    case 'relevance':
-    default: return '';
-  }
-}
-
-async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
-  const config = await getDomainsConfig(request);
-  const domains = config.xiaocao;
-
-  if (domains.length === 0) {
-    console.warn('Xiaocao: no available domains');
-    return [];
-  }
-
-  const sortPath = getXiaocaoSortPath(sort);
-
-  for (const domain of domains) {
-    try {
-      const searchUrl = `${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`;
-      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
-
-      if (!html.includes('search-item')) {
-        continue;
+// ========== 读取小草磁力域名列表 ==========
+async function getXiaocaoDomains(request) {
+  try {
+    const domainsUrl = new URL('/domains.json', request.url);
+    const res = await fetch(domainsUrl.toString());
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data.domains) && data.domains.length > 0) {
+        return data.domains;
       }
-
-      const items = parseXiaocaoResults(html, domain);
-      if (items.length > 0) {
-        console.log(`Xiaocao using domain: ${domain}`);
-        return items;
-      }
-    } catch (err) {
-      console.error(`Xiaocao domain ${domain} failed:`, err);
     }
+  } catch (err) {
+    console.error('Failed to load domains.json:', err);
   }
 
-  return [];
-}
-
-function parseXiaocaoResults(html, domain) {
-  const items = [];
-
-  const parts = html.split(/<div class="search-item[^"]*">/);
-  for (let i = 1; i < parts.length; i++) {
-    const block = parts[i];
-
-    const titleMatch = block.match(/<a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/);
-    if (!titleMatch) continue;
-
-    const detailPath = titleMatch[1];
-    const infoHash = titleMatch[2];
-    let name = titleMatch[3].replace(/<[^>]+>/g, '').trim();
-    if (!name) continue;
-
-    const sizeMatch = block.match(/文件大小:\s*<b[^>]*>([^<]+)<\/b>/);
-    const dateMatch = block.match(/创建时间:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
-    const hotMatch = block.match(/下载热度:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
-
-    items.push({
-      name,
-      size: sizeMatch ? sizeMatch[1].trim() : '',
-      date: dateMatch ? dateMatch[1].trim() : '',
-      hot: hotMatch ? hotMatch[1].trim() : '',
-      magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `${domain}${detailPath}`,
-      source: 'xiaocao',
-    });
-  }
-
-  return items;
+  return [
+    'https://www.xccl264.xyz',
+    'https://www.xccl263.xyz',
+    'https://www.xccl261.xyz',
+    'https://www.xccl260.xyz',
+  ];
 }
 
 // ========== ØMagnet 数据源 ==========
@@ -449,6 +274,7 @@ async function batchFetch0MagnetDetails(items, concurrency, waitUntil) {
         const magnet = extractMagnetFrom0Magnet(detailHtml);
         return { ...item, magnet, detailUrl };
       } catch (err) {
+        console.error(`0Magnet detail failed: ${item.detailPath}`, err);
         return { ...item, magnet: '', detailUrl: '' };
       }
     });
@@ -470,6 +296,77 @@ function extractMagnetFrom0Magnet(html) {
     if (hashMatch) return `magnet:?xt=urn:btih:${hashMatch[1]}`;
   }
   return '';
+}
+
+// ========== 小草磁力数据源 ==========
+function getXiaocaoSortPath(sort) {
+  switch (sort) {
+    case 'length': return '-length';
+    case 'time': return '-time';
+    case 'requests': return '-requests';
+    case 'relevance':
+    default: return '';
+  }
+}
+
+async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
+  const domains = await getXiaocaoDomains(request);
+  const sortPath = getXiaocaoSortPath(sort);
+
+  for (const domain of domains) {
+    try {
+      const searchUrl = `${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`;
+      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
+
+      if (!html.includes('search-item')) {
+        console.warn(`Xiaocao domain ${domain} returned no search-item, trying next`);
+        continue;
+      }
+
+      const items = parseXiaocaoResults(html, domain);
+      if (items.length > 0) {
+        console.log(`Xiaocao using domain: ${domain}`);
+        return items;
+      }
+    } catch (err) {
+      console.error(`Xiaocao domain ${domain} failed:`, err);
+    }
+  }
+
+  return [];
+}
+
+function parseXiaocaoResults(html, domain) {
+  const items = [];
+
+  const parts = html.split(/<div class="search-item[^"]*">/);
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+
+    const titleMatch = block.match(/<a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/);
+    if (!titleMatch) continue;
+
+    const detailPath = titleMatch[1];
+    const infoHash = titleMatch[2];
+    let name = titleMatch[3].replace(/<[^>]+>/g, '').trim();
+    if (!name) continue;
+
+    const sizeMatch = block.match(/文件大小:\s*<b[^>]*>([^<]+)<\/b>/);
+    const dateMatch = block.match(/创建时间:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
+    const hotMatch = block.match(/下载热度:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
+
+    items.push({
+      name,
+      size: sizeMatch ? sizeMatch[1].trim() : '',
+      date: dateMatch ? dateMatch[1].trim() : '',
+      hot: hotMatch ? hotMatch[1].trim() : '',
+      magnet: `magnet:?xt=urn:btih:${infoHash}`,
+      detailUrl: `${domain}${detailPath}`,
+      source: 'xiaocao',
+    });
+  }
+
+  return items;
 }
 
 // ========== 通用缓存与响应 ==========
