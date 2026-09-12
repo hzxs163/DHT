@@ -562,7 +562,7 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
   for (const domain of domains) {
     try {
       // 1) 请求首页，从 JS 里提取当前 search2
-      const homeHtml = await fetchWithCache(`${domain}/`, 600, waitUntil);
+      const homeHtml = await fetchWithCache(`${domain}/`, 300, waitUntil);
 
       let search2 = null;
       let m = homeHtml.match(/nmefafej\s*=\s*["']([a-zA-Z0-9]+)["']/);
@@ -579,7 +579,7 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
       console.log(`Cctv10: search2=${search2}`);
 
       // 2) 用当前 search2 搜
-      const searchPath = `/?search2=7fzxq5y0&search=${encodeURIComponent(query)}&p=${page}`;
+      const searchPath = `/?search2=${search2}&search=${encodeURIComponent(query)}`;
       const html = await fetchWithCache(`${domain}${searchPath}`, 3600, waitUntil);
 
       if (!html.includes('torrent-list')) continue;
