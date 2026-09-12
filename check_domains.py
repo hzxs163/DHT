@@ -5,6 +5,7 @@
 2. 磁力百科：从中转站页面提取 CONFIG，用算法算出子域名
 3. 虎风（hufeng）：从永久入口 ddcl.me / cltt.me 提取当前落地域名
 4. 雨花阁（yuhuage）：通过 Cloudflare Pages Functions 代理请求 iyuhuage.fun
+5. U3C3（cctv10）：从永久入口 cctv10.cc 提取当前落地域名
 把生成的域名写入 domains.json，验证交给 Workers 运行时做
 
 依赖：curl_cffi（用于模拟 Chrome TLS 指纹，绕过 WAF 403）
@@ -47,8 +48,12 @@ YUHUAGE_ENTRY_URLS = [
 ]
 
 # Cloudflare Pages Functions 代理（Actions IP 过不了 CF 盾，走代理）
-# 把你的 Pages 域名填到这里
 YUHUAGE_PROXY_URL = 'https://soubt.pages.dev/proxy/yuhuage'
+
+# ========== U3C3 (cctv10) 永久入口 ==========
+CCTV10_ENTRY_URLS = [
+    'https://cctv10.cc',
+]
 
 OUTPUT_FILE = Path(__file__).parent / 'domains.json'
 
@@ -373,6 +378,45 @@ def extract_yuhuage_domains():
     return result
 
 
+# ========== U3C3 (cctv10) 域名提取 ==========
+def extract_cctv10_domains():
+    """
+    U3C3：从永久入口 cctv10.cc 跟随跳转，拿当前落地域名。
+    """
+    domains = set()
+
+    for entry in CCTV10_ENTRY_URLS:
+        print(f'[cctv10] 请求入口: {entry}')
+        try:
+            html, final_url = fetch_url(entry, timeout=20)
+            print(f'[cctv10] 最终 URL: {final_url}')
+            print(f'[cctv10] 页面长度: {len(html)}')
+
+            # 1) HTTP 跳转后的最终 URL
+            m = re.match(r'(https?://[^/]+)', final_url)
+            if m:
+                url = m.group(1).rstrip('/')
+                if not any(h.replace('https://', '') in url for h in CCTV10_ENTRY_URLS):
+                    if is_valid_domain_url(url):
+                        domains.add(url)
+                        print(f'[cctv10] HTTP 跳转到: {url}')
+
+            # 2) 兜底：从 HTML 里找 cctv10 相关域名
+            for m in re.findall(r'(?:https?:)?//([\w.-]*cctv10[\w.-]*\.[a-z]{2,})', html, re.I):
+                url = f'https://{m}'.rstrip('/')
+                if is_valid_domain_url(url) and not any(h.replace('https://', '') in url for h in CCTV10_ENTRY_URLS):
+                    domains.add(url)
+
+        except Exception as e:
+            print(f'[cctv10] 入口 {entry} 失败: {e}')
+
+    result = sorted(domains)
+    print(f'[cctv10] 提取到 {len(result)} 个落地域名')
+    for d in result:
+        print(f'    - {d}')
+    return result
+
+
 def load_previous_domains():
     if not OUTPUT_FILE.exists():
         return {}
@@ -395,6 +439,7 @@ def main():
         'cilibaike': [],
         'hufeng': [],
         'yuhuage': [],
+        'cctv10': [],
     }
 
     result['xiaocao'] = extract_xiaocao_domains()
@@ -418,6 +463,15 @@ def main():
             print(f'[雨花阁] 提取为空，保留上次的 {len(fallback)} 个域名')
         result['yuhuage'] = fallback
 
+    cctv10_domains = extract_cctv10_domains()
+    if cctv10_domains:
+        result['cctv10'] = cctv10_domains
+    else:
+        fallback = previous.get('cctv10', [])
+        if fallback:
+            print(f'[cctv10] 提取为空，保留上次的 {len(fallback)} 个域名')
+        result['cctv10'] = fallback
+
     OUTPUT_FILE.write_text(
         json.dumps(result, ensure_ascii=False, indent=2),
         encoding='utf-8',
@@ -429,6 +483,7 @@ def main():
     print(f'  磁力百科: {len(result["cilibaike"])} 个')
     print(f'  虎风: {len(result["hufeng"])} 个')
     print(f'  雨花阁: {len(result["yuhuage"])} 个')
+    print(f'  U3C3: {len(result["cctv10"])} 个')
     if result['cilibaike']:
         print('  磁力百科域名:')
         for d in result['cilibaike']:
@@ -440,6 +495,10 @@ def main():
     if result['yuhuage']:
         print('  雨花阁域名:')
         for d in result['yuhuage']:
+            print(f'    - {d}')
+    if result['cctv10']:
+        print('  U3C3 域名:')
+        for d in result['cctv10']:
             print(f'    - {d}')
 
 
