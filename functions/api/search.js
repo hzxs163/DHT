@@ -1,515 +1,762 @@
-// Pages Functions - /api/search
-
-const JUNIORTER_API = 'https://torrent.juniorter.in/api/search-stream';
-const JUNIORTER_PROVIDERS = [
-  'yts', 'eztv', 'torrentclaw', 'piratebay', 'knaben', '1337x', 'limetorrents',
-  'torrentfunk', 'torrentdownloads', 'torlock', 'yourbittorrent', 'magnetz',
-  'bitsearch', 'solidtorrents', 'torrentscsv', 'therarbg', 'animetosho', 'nyaa',
-  'mikan', 'tokyotosho', 'dmhy', 'acgrip', 'subsplease', 'rutor',
-  'audiobookbay', 'academictorrents'
-].join(',');
-
-export async function onRequest(context) {
-  const { request, waitUntil } = context;
-  const url = new URL(request.url);
-  const query = url.searchParams.get('q');
-  const page = parseInt(url.searchParams.get('page') || '1', 10);
-  const sort = url.searchParams.get('sort') || 'relevance';
-
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike';
-  const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
-
-  if (!query) {
-    return jsonResponse({ error: 'Missing query parameter' }, 400);
-  }
-
-  const startTime = Date.now();
-
-  try {
-    const tasks = [];
-
-    if (sources.includes('0magnet')) {
-      tasks.push({
-        name: '0magnet',
-        promise: fetchFrom0Magnet(query, sort, page, waitUntil),
-      });
-    }
-    if (sources.includes('xiaocao')) {
-      tasks.push({
-        name: 'xiaocao',
-        promise: fetchFromXiaocao(query, page, sort, request, waitUntil),
-      });
-    }
-    if (sources.includes('juniorter')) {
-      tasks.push({
-        name: 'juniorter',
-        promise: fetchFromJuniorter(query, page, sort, waitUntil),
-      });
-    }
-    if (sources.includes('cilibaike')) {
-      tasks.push({
-        name: 'cilibaike',
-        promise: fetchFromCilibaike(query, page, sort, request, waitUntil),
-      });
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Ø Magnet - 磁力搜索</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text-primary: #202124;
+      --text-secondary: #70757a;
+      --accent: #1a73e8;
+      --accent-hover: #1557b0;
+      --border: #e8eaed;
+      --border-hover: #dadce0;
+      --highlight-bg: #fef7e0;
+      --card-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      --card-shadow-hover: 0 2px 8px rgba(0,0,0,0.1);
+      --radius: 8px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
 
-    const results = await Promise.allSettled(tasks.map(t => t.promise));
+    * { margin: 0; padding: 0; box-sizing: border-box; }
 
-    const allItems = [];
-    const debug = {};
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text-primary);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 0 16px;
+    }
 
-    results.forEach((r, i) => {
-      const name = tasks[i].name;
-      if (r.status === 'fulfilled') {
-        allItems.push(...r.value);
-        debug[`${name}Status`] = 'fulfilled';
-        debug[`${name}Count`] = r.value.length;
+    .header {
+      width: 100%;
+      max-width: 720px;
+      padding: 60px 0 32px;
+      text-align: center;
+      transition: padding 0.3s ease;
+    }
+
+    .header.compact { padding: 24px 0 16px; }
+
+    .logo {
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin-bottom: 24px;
+      letter-spacing: -0.5px;
+    }
+
+    .logo .zero { color: var(--accent); }
+
+    .header.compact .logo { font-size: 22px; margin-bottom: 16px; }
+
+    .search-form {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      position: relative;
+    }
+
+    .source-dropdown { position: relative; flex-shrink: 0; }
+
+    .source-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 44px;
+      padding: 0 14px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: var(--text-primary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .source-btn:hover { border-color: var(--border-hover); }
+    .source-btn.open { border-color: var(--accent); box-shadow: 0 1px 6px rgba(26,115,232,0.15); }
+    .source-btn .arrow { font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; }
+    .source-btn.open .arrow { transform: rotate(180deg); }
+
+    .source-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 160px;
+      padding: 6px 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      z-index: 100;
+    }
+
+    .source-menu.open { display: block; }
+
+    .source-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .source-option:hover { background: #f8f9fa; }
+
+    .source-option input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+    }
+
+    .source-option span { user-select: none; }
+
+    .search-input-wrap { flex: 1; position: relative; }
+
+    .search-input {
+      width: 100%;
+      height: 44px;
+      padding: 0 20px;
+      font-size: 15px;
+      font-family: var(--font);
+      color: var(--text-primary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      outline: none;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .search-input::placeholder { color: #9aa0a6; }
+    .search-input:focus { border-color: var(--accent); box-shadow: 0 1px 6px rgba(26,115,232,0.15); }
+
+    .search-btn {
+      height: 44px;
+      padding: 0 24px;
+      font-size: 15px;
+      font-family: var(--font);
+      font-weight: 500;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 24px;
+      cursor: pointer;
+      white-space: nowrap;
+      flex-shrink: 0;
+      transition: background 0.2s;
+    }
+
+    .search-btn:hover { background: var(--accent-hover); }
+    .search-btn:disabled { background: #b0c4de; cursor: not-allowed; }
+
+    .main { width: 100%; max-width: 720px; flex: 1; padding-bottom: 48px; }
+
+    .result-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      padding: 0 4px;
+    }
+
+    .result-bar .timing { color: #9aa0a6; margin-left: 6px; }
+
+    .sort-options { display: flex; gap: 12px; }
+
+    .sort-options a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+
+    .sort-options a:hover { color: var(--text-primary); }
+    .sort-options a.active { color: var(--text-primary); font-weight: 600; }
+
+    .result-list { display: flex; flex-direction: column; gap: 12px; }
+
+    .result-card {
+      padding: 16px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      box-shadow: var(--card-shadow);
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .result-card:hover { border-color: var(--border-hover); box-shadow: var(--card-shadow-hover); }
+
+    .result-title {
+      font-size: 16px;
+      line-height: 1.5;
+      color: var(--accent);
+      text-decoration: none;
+      display: block;
+      margin-bottom: 10px;
+      word-break: break-word;
+    }
+
+    .result-title:hover { text-decoration: underline; }
+
+    .result-title mark {
+      background: var(--highlight-bg);
+      color: var(--text-primary);
+      font-weight: 600;
+      padding: 0 2px;
+      border-radius: 2px;
+    }
+
+    .result-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .result-meta-left { display: flex; align-items: center; gap: 6px; }
+    .result-meta-left .dot { color: #dadce0; }
+
+    .result-source {
+      font-size: 11px;
+      color: #9aa0a6;
+      background: #f1f3f4;
+      padding: 2px 8px;
+      border-radius: 10px;
+    }
+
+    .magnet-row {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 10px;
+      padding: 8px 12px;
+      background: #f8f9fa;
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+      overflow: hidden;
+    }
+
+    .magnet-row:hover { background: #e8f0fe; border-color: #c6dafc; }
+    .magnet-row.copied { background: #e6f4ea; border-color: #ceead6; }
+
+    .magnet-icon { flex-shrink: 0; color: var(--text-secondary); }
+    .magnet-row.copied .magnet-icon { color: #34a853; }
+
+    .magnet-text {
+      font-size: 12px;
+      font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+      color: var(--text-secondary);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .magnet-row.copied .magnet-text { color: #34a853; }
+
+    /* ---------- 分页 ---------- */
+    .pagination {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 12px;
+      margin-top: 24px;
+    }
+
+    .page-btn {
+      padding: 8px 20px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: var(--accent);
+      background: none;
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      cursor: pointer;
+      transition: background 0.2s, border-color 0.2s;
+    }
+
+    .page-btn:hover:not(:disabled) {
+      background: #f8f9fa;
+      border-color: var(--border-hover);
+    }
+
+    .page-btn:disabled {
+      color: #dadce0;
+      cursor: not-allowed;
+      border-color: var(--border);
+    }
+
+    .page-info {
+      font-size: 13px;
+      color: var(--text-secondary);
+      min-width: 60px;
+      text-align: center;
+    }
+
+    .loading { display: flex; flex-direction: column; gap: 12px; }
+
+    .skeleton {
+      height: 90px;
+      background: linear-gradient(90deg, #f1f3f4 25%, #e8eaed 50%, #f1f3f4 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: var(--radius);
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 48px 16px;
+      color: var(--text-secondary);
+    }
+
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state .title { font-size: 16px; color: var(--text-primary); margin-bottom: 6px; }
+    .empty-state .desc { font-size: 13px; }
+
+    .empty-state .retry-btn {
+      margin-top: 16px;
+      padding: 8px 20px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 20px;
+      cursor: pointer;
+    }
+
+    .empty-state .retry-btn:hover { background: var(--accent-hover); }
+
+    .hot-searches { margin-top: 24px; text-align: center; }
+
+    .hot-searches .label {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+    }
+
+    .hot-tags {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .hot-tag {
+      padding: 6px 14px;
+      font-size: 13px;
+      color: var(--text-secondary);
+      background: #f1f3f4;
+      border-radius: 16px;
+      text-decoration: none;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .hot-tag:hover { background: #e8eaed; color: var(--text-primary); }
+
+    .footer {
+      width: 100%;
+      max-width: 720px;
+      padding: 20px 0;
+      border-top: 1px solid var(--border);
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    @media (max-width: 768px) {
+      .header { padding: 40px 0 24px; }
+      .logo { font-size: 26px; }
+      .search-form { flex-wrap: wrap; }
+      .source-dropdown { order: 2; }
+      .search-input-wrap { order: 1; flex: 1 0 100%; }
+      .search-btn { order: 3; flex: 1; }
+      .source-btn { height: 38px; padding: 0 12px; font-size: 13px; }
+      .result-title { font-size: 15px; }
+    }
+  </style>
+</head>
+<body>
+
+  <header class="header" id="header">
+    <div class="logo"><span class="zero">Ø</span> Magnet</div>
+    <form class="search-form" id="searchForm">
+      <div class="source-dropdown" id="sourceDropdown">
+        <button type="button" class="source-btn" id="sourceBtn">
+          <span id="sourceLabel">全部源</span>
+          <span class="arrow">▼</span>
+        </button>
+<div class="source-menu" id="sourceMenu">
+  <label class="source-option">
+    <input type="checkbox" value="0magnet" checked>
+    <span>ØMagnet</span>
+  </label>
+  <label class="source-option">
+    <input type="checkbox" value="xiaocao" checked>
+    <span>小草磁力</span>
+  </label>
+  <label class="source-option">
+    <input type="checkbox" value="juniorter" checked>
+    <span>Juniorter</span>
+  </label>
+  <label class="source-option">
+    <input type="checkbox" value="cilibaike" checked>
+    <span>磁力百科</span>
+  </label>
+</div>
+        </div>
+      </div>
+      <div class="search-input-wrap">
+        <input
+          type="text"
+          class="search-input"
+          id="searchInput"
+          placeholder="搜索磁力链接..."
+          autocomplete="off"
+          autofocus
+        />
+      </div>
+      <button type="submit" class="search-btn" id="searchBtn">搜索</button>
+    </form>
+  </header>
+
+  <main class="main" id="main">
+    <div class="hot-searches" id="hotSearches">
+      <div class="label">热门搜索</div>
+      <div class="hot-tags">
+        <a class="hot-tag" href="javascript:void(0)" data-q="CorelDRAW">CorelDRAW</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="Photoshop">Photoshop</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="Office">Office</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="Windows">Windows</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="AutoCAD">AutoCAD</a>
+      </div>
+    </div>
+
+    <div id="resultArea"></div>
+  </main>
+
+  <footer class="footer">
+    免责声明 · 本站仅聚合第三方搜索结果，不存储任何资源
+  </footer>
+
+  <script>
+    const API_BASE = '';
+
+    const header = document.getElementById('header');
+    const searchForm = document.getElementById('searchForm');
+    const searchInput = document.getElementById('searchInput');
+    const searchBtn = document.getElementById('searchBtn');
+    const resultArea = document.getElementById('resultArea');
+    const hotSearches = document.getElementById('hotSearches');
+
+    const sourceDropdown = document.getElementById('sourceDropdown');
+    const sourceBtn = document.getElementById('sourceBtn');
+    const sourceMenu = document.getElementById('sourceMenu');
+    const sourceLabel = document.getElementById('sourceLabel');
+
+    let currentQuery = '';
+    let currentPage = 1;
+    let currentSort = 'newest';
+    let isLoading = false;
+
+    // ---------- 数据源下拉交互 ----------
+    sourceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sourceMenu.classList.toggle('open');
+      sourceBtn.classList.toggle('open');
+    });
+
+    document.addEventListener('click', (e) => {
+      if (!sourceDropdown.contains(e.target)) {
+        sourceMenu.classList.remove('open');
+        sourceBtn.classList.remove('open');
+      }
+    });
+
+    sourceMenu.addEventListener('change', () => {
+      updateSourceLabel();
+    });
+
+    function updateSourceLabel() {
+      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
+      const checked = Array.from(checkboxes).filter(c => c.checked);
+
+      if (checked.length === 0) {
+        checkboxes.forEach(c => c.checked = true);
+        sourceLabel.textContent = '全部源';
+        return;
+      }
+
+      if (checked.length === checkboxes.length) {
+        sourceLabel.textContent = '全部源';
       } else {
-        console.error(`${name} failed:`, r.reason);
-        debug[`${name}Status`] = 'rejected';
-        debug[`${name}Count`] = 0;
-        debug[`${name}Error`] = String(r.reason);
-      }
-    });
-
-    const seen = new Set();
-    const deduped = [];
-    for (const item of allItems) {
-      const hashMatch = item.magnet && item.magnet.match(/btih:([a-zA-Z0-9]{32,40})/);
-      const key = hashMatch ? hashMatch[1].toLowerCase() : item.name;
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(item);
+        sourceLabel.textContent = checked.map(c => {
+          const label = c.nextElementSibling;
+          return label ? label.textContent : c.value;
+        }).join('、');
       }
     }
 
-    const timing = Date.now() - startTime;
-    return jsonResponse({
-      results: deduped,
-      total: deduped.length,
-      timing,
-      debug: {
-        sources: sources,
-        page: page,
-        totalBeforeDedup: allItems.length,
-        ...debug,
-      },
+    function getSelectedSources() {
+      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
+      const checked = Array.from(checkboxes).filter(c => c.checked);
+      if (checked.length === 0) {
+        return Array.from(checkboxes).map(c => c.value);
+      }
+      return checked.map(c => c.value);
+    }
+
+    // ---------- 搜索 ----------
+    searchForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const q = searchInput.value.trim();
+      if (q) doSearch(q, 1);
     });
 
-  } catch (err) {
-    console.error('Search error:', err);
-    return jsonResponse({ error: 'Search failed', detail: String(err) }, 502);
-  }
-}
+    document.querySelectorAll('.hot-tag').forEach(tag => {
+      tag.addEventListener('click', () => {
+        const q = tag.dataset.q;
+        searchInput.value = q;
+        doSearch(q, 1);
+      });
+    });
 
-// ========== 磁力链接简化 ==========
-function simplifyMagnet(magnet) {
-  if (!magnet) return '';
-  const match = magnet.match(/xt=urn:btih:([a-zA-Z0-9]{32,40})/i);
-  if (match) {
-    return `magnet:?xt=urn:btih:${match[1]}`;
-  }
-  return magnet;
-}
+    async function doSearch(query, page = 1) {
+      if (isLoading) return;
+      isLoading = true;
 
-// ========== 读取 domains.json ==========
-async function getDomainsConfig(request) {
-  try {
-    const domainsUrl = new URL('/domains.json', request.url);
-    const res = await fetch(domainsUrl.toString());
-    if (res.ok) {
-      const data = await res.json();
-      return {
-        xiaocao: Array.isArray(data.xiaocao) ? data.xiaocao : [],
-        cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
-      };
-    }
-  } catch (err) {
-    console.error('Failed to load domains.json:', err);
-  }
-  return { xiaocao: [], cilibaike: [] };
-}
+      currentQuery = query;
+      currentPage = page;
 
-// ========== 磁力百科数据源 ==========
-async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
-  const config = await getDomainsConfig(request);
-  const domains = config.cilibaike;
+      header.classList.add('compact');
+      hotSearches.style.display = 'none';
 
-  if (domains.length === 0) {
-    console.warn('Cilibaike: no available domains');
-    return [];
-  }
+      resultArea.innerHTML = `
+        <div class="result-bar">
+          <span>搜索中...</span>
+        </div>
+        <div class="loading">
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+          <div class="skeleton"></div>
+        </div>
+      `;
 
-  // 排序映射：cilibaike 的 order 参数
-  // 0=相关度, 1=体积最大, 2=最新添加, 3=热度, 4=最近发现
-  let order = '0';
-  switch (sort) {
-    case 'length': order = '1'; break;
-    case 'time':
-    case 'newest': order = '2'; break;
-    case 'requests': order = '3'; break;
-    case 'relevance':
-    default: order = '0'; break;
-  }
+      searchBtn.disabled = true;
+      searchBtn.textContent = '搜索中';
 
-  // 搜索 URL 格式：/search-关键词-分类-排序-页码.html
-  // 分类 0 = 全部
-  const searchPath = `/search-${encodeURIComponent(query)}-0-${order}-${page}.html`;
-
-  for (const domain of domains) {
-    try {
-      const searchUrl = `${domain}${searchPath}?lang=zh_CN`;
-      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
-
-      // 检查是否有结果
-      if (!html.includes('resource-card')) {
-        console.warn(`Cilibaike domain ${domain} returned no results, trying next`);
-        continue;
+      // 翻页时滚动到顶部
+      if (page > 1) {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
 
-      const items = parseCilibaikeResults(html, domain);
-      if (items.length > 0) {
-        console.log(`Cilibaike using domain: ${domain}`);
-        return items;
-      }
-    } catch (err) {
-      console.error(`Cilibaike domain ${domain} failed:`, err);
-    }
-  }
-
-  return [];
-}
-
-function parseCilibaikeResults(html, domain) {
-  const items = [];
-
-  // 每个结果是一个 article.resource-card
-  // 用 split 按起始标签切分
-  const parts = html.split(/<article class="resource resource-card"[^>]*>/);
-  for (let i = 1; i < parts.length; i++) {
-    const block = parts[i];
-
-    // 标题和详情页路径：<h2><a href="/hash/<40位hash>.html">...</a></h2>
-    const titleMatch = block.match(/<h2><a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a><\/h2>/);
-    if (!titleMatch) continue;
-
-    const detailPath = titleMatch[1];
-    const infoHash = titleMatch[2];
-    let name = titleMatch[3]
-      .replace(/<[^>]+>/g, '')     // 去掉标签
-      .replace(/\s+/g, ' ')         // 合并空白
-      .trim();
-    // 去掉分类前缀，如 【影视】
-    name = name.replace(/^【[^】]+】\s*/, '');
-    if (!name) continue;
-
-    // 元信息：<div class="meta resource-meta">...</div>
-    const metaMatch = block.match(/<div class="meta resource-meta">([\s\S]*?)<\/div>/);
-    let size = '';
-    let date = '';
-
-    if (metaMatch) {
-      const meta = metaMatch[1];
-      const sizeMatch = meta.match(/大小：\s*<span>([^<]+)<\/span>/);
-      const dateMatch = meta.match(/添加时间：\s*<span>([^<]+)<\/span>/);
-      if (sizeMatch) size = sizeMatch[1].trim();
-      if (dateMatch) date = dateMatch[1].trim();
-    }
-
-    items.push({
-      name,
-      size,
-      date,
-      magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `${domain}${detailPath}`,
-      source: 'cilibaike',
-    });
-  }
-
-  return items;
-}
-
-// ========== Juniorter 数据源 ==========
-async function fetchFromJuniorter(query, page, sort, waitUntil) {
-  const juniorterSort = (sort === 'time' || sort === 'newest') ? 'date' : 'seeds';
-  const apiUrl = `${JUNIORTER_API}?q=${encodeURIComponent(query)}&sort=${juniorterSort}&pageSize=50&providers=${encodeURIComponent(JUNIORTER_PROVIDERS)}`;
-
-  const cacheKey = new Request(apiUrl, { method: 'GET' });
-  const cache = caches.default;
-
-  let response = await cache.match(cacheKey);
-  if (!response) {
-    response = await fetch(apiUrl, {
-      headers: {
-        'Accept': 'text/event-stream',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://torrent.juniorter.in/ch/',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Juniorter HTTP ${response.status}`);
-    }
-
-    const cloned = response.clone();
-    const cacheResponse = new Response(await cloned.text(), {
-      headers: {
-        'Content-Type': 'text/event-stream; charset=utf-8',
-        'Cache-Control': 'public, max-age=1800',
-      },
-    });
-    if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
-    else await cache.put(cacheKey, cacheResponse);
-  }
-
-  const text = await response.text();
-  return parseJuniorterSSE(text);
-}
-
-function parseJuniorterSSE(text) {
-  const items = [];
-  const lines = text.split('\n');
-
-  let currentEvent = null;
-  let currentData = '';
-
-  for (const line of lines) {
-    if (line.startsWith('event: ')) {
-      currentEvent = line.slice(7).trim();
-    } else if (line.startsWith('data: ')) {
-      currentData = line.slice(6);
-    } else if (line === '' && currentEvent && currentData) {
-      if (currentEvent === 'provider') {
-        try {
-          const parsed = JSON.parse(currentData);
-          if (parsed.ok && Array.isArray(parsed.results)) {
-            for (const r of parsed.results) {
-              if (r.magnet && r.title) {
-                items.push({
-                  name: r.title,
-                  size: r.size || '',
-                  date: r.date ? r.date.slice(0, 10) : '',
-                  seeds: r.seeds || 0,
-                  peers: r.peers || 0,
-                  magnet: simplifyMagnet(r.magnet),
-                  detailUrl: r.url || '',
-                  source: 'juniorter',
-                });
-              }
-            }
-          }
-        } catch (e) {
-          // 忽略
-        }
-      }
-      currentEvent = null;
-      currentData = '';
-    }
-  }
-
-  return items;
-}
-
-// ========== 小草磁力数据源 ==========
-function getXiaocaoSortPath(sort) {
-  switch (sort) {
-    case 'length': return '-length';
-    case 'time': return '-time';
-    case 'requests': return '-requests';
-    case 'relevance':
-    default: return '';
-  }
-}
-
-async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
-  const config = await getDomainsConfig(request);
-  const domains = config.xiaocao;
-
-  if (domains.length === 0) {
-    console.warn('Xiaocao: no available domains');
-    return [];
-  }
-
-  const sortPath = getXiaocaoSortPath(sort);
-
-  for (const domain of domains) {
-    try {
-      const searchUrl = `${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`;
-      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
-
-      if (!html.includes('search-item')) {
-        continue;
-      }
-
-      const items = parseXiaocaoResults(html, domain);
-      if (items.length > 0) {
-        console.log(`Xiaocao using domain: ${domain}`);
-        return items;
-      }
-    } catch (err) {
-      console.error(`Xiaocao domain ${domain} failed:`, err);
-    }
-  }
-
-  return [];
-}
-
-function parseXiaocaoResults(html, domain) {
-  const items = [];
-
-  const parts = html.split(/<div class="search-item[^"]*">/);
-  for (let i = 1; i < parts.length; i++) {
-    const block = parts[i];
-
-    const titleMatch = block.match(/<a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/);
-    if (!titleMatch) continue;
-
-    const detailPath = titleMatch[1];
-    const infoHash = titleMatch[2];
-    let name = titleMatch[3].replace(/<[^>]+>/g, '').trim();
-    if (!name) continue;
-
-    const sizeMatch = block.match(/文件大小:\s*<b[^>]*>([^<]+)<\/b>/);
-    const dateMatch = block.match(/创建时间:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
-    const hotMatch = block.match(/下载热度:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
-
-    items.push({
-      name,
-      size: sizeMatch ? sizeMatch[1].trim() : '',
-      date: dateMatch ? dateMatch[1].trim() : '',
-      hot: hotMatch ? hotMatch[1].trim() : '',
-      magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `${domain}${detailPath}`,
-      source: 'xiaocao',
-    });
-  }
-
-  return items;
-}
-
-// ========== ØMagnet 数据源 ==========
-async function fetchFrom0Magnet(query, sort, page, waitUntil) {
-  const searchUrl = `https://0magnet.com/search?q=${encodeURIComponent(query)}&sort=${sort}&page=${page}`;
-  const searchHtml = await fetchWithCache(searchUrl, 3600, waitUntil);
-
-  const items = await parse0MagnetSearchResults(searchHtml);
-  if (items.length === 0) return [];
-
-  return await batchFetch0MagnetDetails(items, 5, waitUntil);
-}
-
-async function parse0MagnetSearchResults(html) {
-  const items = [];
-  let currentItem = null;
-
-  const rewriter = new HTMLRewriter()
-    .on('table.file-list tbody tr', {
-      element(el) {
-        if (currentItem) items.push(currentItem);
-        currentItem = { name: '', size: '', date: '', detailPath: '', source: '0magnet' };
-      },
-    })
-    .on('td.result-title a', {
-      element(el) {
-        if (!currentItem) return;
-        const href = el.getAttribute('href');
-        if (href) currentItem.detailPath = href;
-      },
-      text(text) {
-        if (!currentItem) return;
-        currentItem.name += text.text;
-      },
-    })
-    .on('td.result-meta div', {
-      text(text) {
-        if (!currentItem) return;
-        const t = text.text.trim();
-        if (!t) return;
-        if (t.includes('GB') || t.includes('MB') || t.includes('KB') || t.includes('B')) {
-          if (!currentItem.size) currentItem.size = t;
-        } else if (t.match(/\d{4}-\d{2}-\d{2}/)) {
-          currentItem.date = t;
-        }
-      },
-    });
-
-  await rewriter.transform(new Response(html)).text();
-  if (currentItem && currentItem.name) items.push(currentItem);
-  return items;
-}
-
-async function batchFetch0MagnetDetails(items, concurrency, waitUntil) {
-  const results = [];
-  for (let i = 0; i < items.length; i += concurrency) {
-    const batch = items.slice(i, i + concurrency);
-    const promises = batch.map(async (item) => {
       try {
-        const detailUrl = `https://0magnet.com${item.detailPath}`;
-        const detailHtml = await fetchWithCache(detailUrl, 86400, waitUntil);
-        const magnet = extractMagnetFrom0Magnet(detailHtml);
-        return { ...item, magnet, detailUrl };
+        const sources = getSelectedSources().join(',');
+        const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&page=${page}&sort=${currentSort}&sources=${encodeURIComponent(sources)}`;
+        const res = await fetch(url);
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        renderResults(data, query, page);
+
       } catch (err) {
-        return { ...item, magnet: '', detailUrl: '' };
+        console.error('搜索失败:', err);
+        renderError();
+      } finally {
+        isLoading = false;
+        searchBtn.disabled = false;
+        searchBtn.textContent = '搜索';
       }
-    });
-    results.push(...(await Promise.all(promises)));
-  }
-  return results;
-}
+    }
 
-function extractMagnetFrom0Magnet(html) {
-  const match = html.match(/id="input-magnet"[^>]*value="([^"]+)"/);
-  if (match) {
-    const full = match[1]
-      .replace(/&amp;/g, '&')
-      .replace(/&quot;/g, '"')
-      .replace(/&#39;/g, "'")
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>');
-    const hashMatch = full.match(/xt=urn:btih:([a-zA-Z0-9]+)/);
-    if (hashMatch) return `magnet:?xt=urn:btih:${hashMatch[1]}`;
-  }
-  return '';
-}
+    function renderResults(data, query, page) {
+      const results = data.results || [];
+      const total = data.total || results.length;
+      const timing = data.timing || 0;
 
-// ========== 通用缓存与响应 ==========
-async function fetchWithCache(url, ttl, waitUntil) {
-  const cache = caches.default;
-  const cacheKey = new Request(url, { method: 'GET' });
+      if (results.length === 0 && page === 1) {
+        resultArea.innerHTML = `
+          <div class="empty-state">
+            <div class="icon">😕</div>
+            <div class="title">未找到相关结果</div>
+            <div class="desc">试试其他关键词，或检查拼写</div>
+          </div>
+        `;
+        return;
+      }
 
-  let response = await cache.match(cacheKey);
-  if (response) return response.text();
+      let html = `
+        <div class="result-bar">
+          <span>本页 ${total} 条结果 <span class="timing">— ${timing} ms</span></span>
+          <div class="sort-options">
+            <a href="javascript:void(0)" data-sort="relevance" class="${currentSort === 'relevance' ? 'active' : ''}">相关</a>
+            <a href="javascript:void(0)" data-sort="newest" class="${currentSort === 'newest' ? 'active' : ''}">最新</a>
+          </div>
+        </div>
+        <div class="result-list">
+      `;
 
-  response = await fetch(url, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-      'Accept-Language': 'zh-CN,zh;q=0.9',
-    },
-  });
+      results.forEach(item => {
+        const name = highlightKeyword(item.name, query);
+        const size = item.size || '未知';
+        const date = item.date || '';
+        const magnet = item.magnet || '';
+        const source = item.source || '';
 
-  const html = await response.text();
+        html += `
+          <div class="result-card">
+            <a class="result-title" href="${item.detailUrl || '#'}" target="_blank" rel="noopener">
+              ${name}
+            </a>
+            <div class="result-meta">
+              <div class="result-meta-left">
+                <span>${size}</span>
+                ${date ? `<span class="dot">·</span><span>${date}</span>` : ''}
+                ${source ? `<span class="result-source">${escapeHtml(source)}</span>` : ''}
+              </div>
+            </div>
+            ${magnet ? `
+              <div class="magnet-row" data-magnet="${escapeAttr(magnet)}" title="点击复制磁力链接">
+                <svg class="magnet-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+                <span class="magnet-text">${escapeHtml(magnet)}</span>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      });
 
-  if (response.ok) {
-    const cacheResponse = new Response(html, {
-      headers: {
-        'Content-Type': 'text/html; charset=utf-8',
-        'Cache-Control': `public, max-age=${ttl}`,
-      },
-    });
-    if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
-    else await cache.put(cacheKey, cacheResponse);
-  }
+      html += `</div>`;
 
-  return html;
-}
+      // 分页
+      html += `
+        <div class="pagination">
+          <button class="page-btn" id="prevBtn" ${page <= 1 ? 'disabled' : ''}>上一页</button>
+          <span class="page-info">第 ${page} 页</span>
+          <button class="page-btn" id="nextBtn" ${results.length === 0 ? 'disabled' : ''}>下一页</button>
+        </div>
+      `;
 
-function jsonResponse(data, status = 200) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'Content-Type': 'application/json; charset=utf-8',
-      'Access-Control-Allow-Origin': '*',
-    },
-  });
-}
+      resultArea.innerHTML = html;
+
+      // 绑定复制
+      resultArea.querySelectorAll('.magnet-row').forEach(row => {
+        row.addEventListener('click', () => copyMagnetRow(row));
+      });
+
+      // 绑定排序
+      resultArea.querySelectorAll('.sort-options a').forEach(a => {
+        a.addEventListener('click', () => {
+          currentSort = a.dataset.sort;
+          doSearch(currentQuery, 1);
+        });
+      });
+
+      // 绑定翻页
+      const prevBtn = document.getElementById('prevBtn');
+      const nextBtn = document.getElementById('nextBtn');
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          if (page > 1) doSearch(currentQuery, page - 1);
+        });
+      }
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          if (results.length > 0) doSearch(currentQuery, page + 1);
+        });
+      }
+    }
+
+    function highlightKeyword(text, keyword) {
+      if (!keyword) return escapeHtml(text);
+      const escaped = escapeHtml(text);
+      const escapedKeyword = escapeRegExp(escapeHtml(keyword));
+      const regex = new RegExp(`(${escapedKeyword})`, 'gi');
+      return escaped.replace(regex, '<mark>$1</mark>');
+    }
+
+    async function copyMagnetRow(row) {
+      const magnet = row.dataset.magnet;
+      if (!magnet) return;
+
+      const textEl = row.querySelector('.magnet-text');
+      const originalText = textEl.textContent;
+
+      try {
+        await navigator.clipboard.writeText(magnet);
+      } catch {
+        const ta = document.createElement('textarea');
+        ta.value = magnet;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+      }
+
+      row.classList.add('copied');
+      textEl.textContent = '已复制到剪贴板';
+      setTimeout(() => {
+        row.classList.remove('copied');
+        textEl.textContent = originalText;
+      }, 1500);
+    }
+
+    function renderError() {
+      resultArea.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">⚠️</div>
+          <div class="title">数据源暂时不可用</div>
+          <div class="desc">请稍后重试，或换个关键词</div>
+          <button class="retry-btn" onclick="doSearch('${escapeAttr(currentQuery)}', 1)">重试</button>
+        </div>
+      `;
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    function escapeAttr(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+    }
+
+    function escapeRegExp(str) {
+      return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    }
+  </script>
+</body>
+</html>
