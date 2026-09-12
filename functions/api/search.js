@@ -559,11 +559,29 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
   const domains = config.cctv10;
   if (domains.length === 0) return [];
 
-  const searchPath = `/?search2=uowt4hvn&search=${encodeURIComponent(query)}&p=${page}`;
-
   for (const domain of domains) {
     try {
+      // 1) 请求首页，从 JS 里提取当前 search2
+      const homeHtml = await fetchWithCache(`${domain}/`, 600, waitUntil);
+
+      let search2 = null;
+      let m = homeHtml.match(/nmefafej\s*=\s*["']([a-zA-Z0-9]+)["']/);
+      if (m) search2 = m[1];
+      if (!search2) {
+        m = homeHtml.match(/search2=([a-zA-Z0-9]+)/);
+        if (m) search2 = m[1];
+      }
+
+      if (!search2) {
+        console.error(`Cctv10: no search2 found on ${domain}`);
+        continue;
+      }
+      console.log(`Cctv10: search2=${search2}`);
+
+      // 2) 用当前 search2 搜
+      const searchPath = `/?search2=${search2}&search=${encodeURIComponent(query)}&p=${page}`;
       const html = await fetchWithCache(`${domain}${searchPath}`, 3600, waitUntil);
+
       if (!html.includes('torrent-list')) continue;
       const items = parseCctv10Results(html, domain);
       if (items.length > 0) return items;
