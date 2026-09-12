@@ -563,6 +563,8 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
     try {
       // 1) 请求首页，从 JS 里提取当前 search2
       const homeHtml = await fetchWithCache(`${domain}/`, 300, waitUntil);
+      console.log(`Cctv10: homeHtml length=${homeHtml.length}`);
+      console.log(`Cctv10: homeHtml has nmefafej=${homeHtml.includes('nmefafej')}`);
 
       let search2 = null;
       let m = homeHtml.match(/nmefafej\s*=\s*["']([a-zA-Z0-9]+)["']/);
@@ -574,16 +576,24 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
 
       if (!search2) {
         console.error(`Cctv10: no search2 found on ${domain}`);
+        console.log(`Cctv10: homeHtml head=${homeHtml.slice(0, 500)}`);
         continue;
       }
       console.log(`Cctv10: search2=${search2}`);
 
       // 2) 用当前 search2 搜
       const searchPath = `/?search2=${search2}&search=${encodeURIComponent(query)}`;
-      const html = await fetchWithCache(`${domain}${searchPath}`, 3600, waitUntil);
+      const searchUrl = `${domain}${searchPath}`;
+      console.log(`Cctv10: searchUrl=${searchUrl}`);
+
+      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
+      console.log(`Cctv10: searchHtml length=${html.length}`);
+      console.log(`Cctv10: searchHtml has torrent-list=${html.includes('torrent-list')}`);
+      console.log(`Cctv10: searchHtml head=${html.slice(0, 500)}`);
 
       if (!html.includes('torrent-list')) continue;
       const items = parseCctv10Results(html, domain);
+      console.log(`Cctv10: parsed ${items.length} items`);
       if (items.length > 0) return items;
     } catch (err) {
       console.error(`Cctv10 domain ${domain} failed:`, err);
