@@ -477,19 +477,25 @@ async function fetchFromYuhuage(query, page, sort, waitUntil) {
 
 function parseYuhuageResults(html, domain) {
   const items = [];
-  const re = /<a[^>]+href="(\/(?:hash|detail)\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/g;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    const detailPath = m[1];
-    const infoHash = m[2];
-    let name = m[3].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  const parts = html.split(/<div class="search-item detail-width">/);
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+
+    const linkMatch = block.match(/<h3><a[^>]+href="\/hash\/([a-fA-F0-9]{40})\.html"[^>]*>([\s\S]*?)<\/a><\/h3>/);
+    if (!linkMatch) continue;
+    const infoHash = linkMatch[1];
+    let name = linkMatch[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
     if (!name) continue;
+
+    const dateMatch = block.match(/创建时间：<b>\s*([^<]+)/);
+    const sizeMatch = block.match(/大小：<b[^>]*>([^<]+)<\/b>/);
+
     items.push({
       name,
-      size: '',
-      date: '',
+      size: sizeMatch ? sizeMatch[1].trim() : '',
+      date: dateMatch ? dateMatch[1].trim() : '',
       magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `${domain}${detailPath}`,
+      detailUrl: `${domain}/hash/${infoHash}.html`,
       source: 'yuhuage',
     });
   }
@@ -518,19 +524,25 @@ async function fetchFromHufeng(query, page, sort, waitUntil) {
 
 function parseHufengResults(html, domain) {
   const items = [];
-  const re = /<a[^>]+href="(\/(?:hash|detail|info)\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/g;
-  let m;
-  while ((m = re.exec(html)) !== null) {
-    const detailPath = m[1];
-    const infoHash = m[2];
-    let name = m[3].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  const parts = html.split(/<div class="result">/);
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+
+    const linkMatch = block.match(/<a[^>]+href="\/([a-fA-F0-9]{40})\.html"[^>]*>([\s\S]*?)<\/a>/);
+    if (!linkMatch) continue;
+    const infoHash = linkMatch[1];
+    let name = linkMatch[2].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
     if (!name) continue;
+
+    const dateMatch = block.match(/时间：\s*([^<]+)/);
+    const sizeMatch = block.match(/大小：\s*([^<]+)/);
+
     items.push({
       name,
-      size: '',
-      date: '',
+      size: sizeMatch ? sizeMatch[1].trim() : '',
+      date: dateMatch ? dateMatch[1].trim() : '',
       magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `${domain}${detailPath}`,
+      detailUrl: `${domain}/${infoHash}.html`,
       source: 'hufeng',
     });
   }
