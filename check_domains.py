@@ -4,7 +4,7 @@
 1. 小草磁力：从 fwonggh/xccl 提取域名
 2. 磁力百科：从中转站页面提取 CONFIG，用算法算出子域名
 3. 虎风（hufeng）：从永久入口 ddcl.me / cltt.me 跟随跳转，提取当前落地域名
-4. 雨花阁（yuhuage）：从永久入口 iyuhuage.fun 解析出当前跳转目标域名
+4. 雨花阁（yuhuage）：从永久入口 iyuhuage.fun 跟随跳转，提取当前落地域名
 把生成的域名写入 domains.json，验证交给 Workers 运行时做
 
 依赖：curl_cffi（用于模拟 Chrome TLS 指纹，绕过 WAF 403）
@@ -14,6 +14,9 @@ import base64
 import json
 import re
 import time
+import urllib.request
+import urllib.error
+import ssl
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,9 +25,6 @@ try:
     HAS_CFFI = True
 except ImportError:
     HAS_CFFI = False
-    import urllib.request
-    import urllib.error
-    import ssl
 
 # ========== 小草磁力 ==========
 XIAOCAO_SOURCE_URL = 'https://raw.githubusercontent.com/fwonggh/xccl/main/index.html'
@@ -54,13 +54,17 @@ HEADERS = {
     'Accept-Language': 'zh-CN,zh;q=0.9',
 }
 
+# 合法域名正则：必须含点，后缀 2 位以上字母
+VALID_DOMAIN_RE = re.compile(r'^https?://[\w-]+(\.[\w-]+)+\.[a-z]{2,}$', re.I)
 
-# ========== 统一请求层 ==========
+
+def is_valid_domain_url(url):
+    """判断是不是合法域名 URL（过滤 https://search 这种垃圾）"""
+    return bool(VALID_DOMAIN_RE.match(url.rstrip('/')))
+
+
+# ========== 统一请求层（curl_cffi） ==========
 def fetch_url(url, timeout=15, headers=None, impersonate='chrome120'):
-    """
-    统一请求函数。优先用 curl_cffi，没装则回退 urllib。
-    返回 (text, final_url)。
-    """
     h = {**HEADERS, **(headers or {})}
 
     if HAS_CFFI:
@@ -85,6 +89,18 @@ def fetch_url(url, timeout=15, headers=None, impersonate='chrome120'):
 def fetch_text(url, timeout=15, headers=None):
     text, _ = fetch_url(url, timeout=timeout, headers=headers)
     return text
+
+
+# ========== urllib 专用请求（雨花阁用） ==========
+def fetch_url_urllib(url, timeout=15, headers=None):
+    """纯 urllib 请求，用于能正常 302 跳转的站（如雨花阁）"""
+    h = {**HEADERS, **(headers or {})}
+    req = urllib.request.Request(url, headers=h)
+    ctx = ssl.create_default_context()
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    with urllib.request.urlopen(req, timeout=timeout, context=ctx) as resp:
+        return resp.read().decode('utf-8', errors='replace'), resp.geturl()
 
 
 # ========== 小草磁力域名提取 ==========
@@ -276,78 +292,45 @@ def extract_hufeng_domains():
 
 
 # ========== 雨花阁域名提取 ==========
-def parse_redirect_target(html, base_url):
-    """
-    从 HTML 里解析出跳转目标域名。
-    支持：meta refresh、JS location、meta mobile-agent、页面里任何 yuhuage 域名。
-    """
-    targets = set()
-
-    # 1) meta refresh: <meta http-equiv="refresh" content="0;url=https://www.yuhuage008.xyz/">
-    for m in re.findall(r'http-equiv=["\']?refresh["\']?[^>]*content=["\']?[^;]+;\s*url=([^"\'>\s]+)', html, re.I):
-        targets.add(m.strip())
-
-    # 2) JS 跳转: location.href = "https://..." / location.replace("https://...")
-    for m in re.findall(r'(?:location\.href|location\.replace|location\.assign)\s*[=(]\s*["\']([^"\']+)', html, re.I):
-        targets.add(m.strip())
-
-    # 3) meta mobile-agent: content="format=html5; url=https://www.yuhuage.fit"
-    for m in re.findall(r'<meta[^>]+url=([^"\'>\s]+)', html, re.I):
-        targets.add(m.strip())
-
-    # 4) 页面里任何 yuhuage 域名
-    for m in re.findall(r'(?:https?:)?//([\w.-]*yuhuage[\w.-]*\.[a-z]{2,})', html, re.I):
-        targets.add(f'https://{m}')
-
-    # 5) 裸域名兜底
-    for m in re.findall(r'\b([\w-]*yuhuage[\w-]*\.[a-z]{2,})\b', html, re.I):
-        targets.add(f'https://{m}')
-
-    # 规范化：只保留 host
-    result = set()
-    for t in targets:
-        t = t.strip().rstrip('/')
-        if not t:
-            continue
-        if not t.startswith('http'):
-            t = 'https://' + t.lstrip('/')
-        mm = re.match(r'(https?://[^/]+)', t)
-        if mm:
-            result.add(mm.group(1))
-    return result
-
-
 def extract_yuhuage_domains():
     """
-    雨花阁：请求永久入口 iyuhuage.fun，解析出它当前跳转到的目标域名。
-    不依赖候选列表。
+    雨花阁：用 urllib 请求 iyuhuage.fun，拿 302 跳转后的最终 URL。
+    本地已验证 urllib 能拿到 https://www.yuhuage008.xyz/。
     """
     domains = set()
 
     for entry in YUHUAGE_ENTRY_URLS:
         print(f'[雨花阁] 请求入口: {entry}')
         try:
-            html, final_url = fetch_url(entry, timeout=20)
+            html, final_url = fetch_url_urllib(entry, timeout=20)
             print(f'[雨花阁] 最终 URL: {final_url}')
             print(f'[雨花阁] 页面长度: {len(html)}')
 
-            # 如果 HTTP 层就跳了，直接用最终 URL
+            # 1) 拿 HTTP 跳转后的最终 URL
             m = re.match(r'(https?://[^/]+)', final_url)
-            if m and not any(h in final_url for h in YUHUAGE_ENTRY_URLS):
-                domains.add(m.group(1))
-                print(f'[雨花阁] HTTP 跳转到: {m.group(1)}')
+            if m:
+                url = m.group(1).rstrip('/')
+                if not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
+                    if is_valid_domain_url(url):
+                        domains.add(url)
+                        print(f'[雨花阁] HTTP 跳转到: {url}')
 
-            # 从 HTML 里解析跳转目标
-            targets = parse_redirect_target(html, entry)
-            for t in targets:
-                if not any(h.replace('https://', '') in t for h in YUHUAGE_ENTRY_URLS):
-                    domains.add(t)
-                    print(f'[雨花阁] HTML 解析到: {t}')
+            # 2) 兜底：从 HTML 里找跳转目标
+            for m in re.findall(r'(?:location\.href|location\.replace)\s*[=(]\s*["\']([^"\']+)', html, re.I):
+                mm = re.match(r'(https?://[^/]+)', m)
+                if mm:
+                    url = mm.group(1).rstrip('/')
+                    if not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
+                        if is_valid_domain_url(url):
+                            domains.add(url)
 
-            # 如果 HTML 里没解析到，打印含 yuhuage 的片段方便排查
-            if not targets:
-                for frag in re.findall(r'.{0,60}yuhuage.{0,60}', html, re.I):
-                    print(f'[雨花阁] 含 yuhuage 片段: {frag!r}')
+            for m in re.findall(r'<meta[^>]+url=([^"\'>\s]+)', html, re.I):
+                mm = re.match(r'(?:https?:)?//([^/]+)', m)
+                if mm:
+                    url = f'https://{mm.group(1)}'.rstrip('/')
+                    if not any(h.replace('https://', '') in url for h in YUHUAGE_ENTRY_URLS):
+                        if is_valid_domain_url(url):
+                            domains.add(url)
 
         except Exception as e:
             print(f'[雨花阁] 入口 {entry} 失败: {e}')
