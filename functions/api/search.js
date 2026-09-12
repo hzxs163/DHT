@@ -570,17 +570,21 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
 
   for (const domain of domains) {
     try {
-      // 1) 请求首页，从 JS 里提取当前 search2
       const homeHtml = await fetchWithCache(`${domain}/`, 300, waitUntil);
       CCTV10_DEBUG.homeLen = homeHtml.length;
       CCTV10_DEBUG.homeHasNmefafej = homeHtml.includes('nmefafej');
-      CCTV10_DEBUG.homeHasSearch2 = homeHtml.includes('search2');
 
       let search2 = null;
-      let m = homeHtml.match(/nmefafej\s*=\s*["']([a-zA-Z0-9]+)["']/);
-      if (m) search2 = m[1];
+
+      // 取所有 nmefafej，用最后一个（排除被注释的旧值）
+      const matches = [...homeHtml.matchAll(/nmefafej\s*=\s*["']([a-zA-Z0-9]+)["']/g)];
+      CCTV10_DEBUG.matches = matches.map(m => m[1]);
+      if (matches.length > 0) {
+        search2 = matches[matches.length - 1][1];
+      }
+
       if (!search2) {
-        m = homeHtml.match(/search2=([a-zA-Z0-9]+)/);
+        const m = homeHtml.match(/search2=([a-zA-Z0-9]+)/);
         if (m) search2 = m[1];
       }
 
@@ -592,7 +596,6 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
         continue;
       }
 
-      // 2) 用当前 search2 搜
       const searchPath = `/?search2=${search2}&search=${encodeURIComponent(query)}`;
       const searchUrl = `${domain}${searchPath}`;
       CCTV10_DEBUG.searchUrl = searchUrl;
@@ -600,7 +603,6 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
       const html = await fetchWithCache(searchUrl, 3600, waitUntil);
       CCTV10_DEBUG.searchLen = html.length;
       CCTV10_DEBUG.searchHasTorrentList = html.includes('torrent-list');
-      CCTV10_DEBUG.searchHead = html.slice(0, 500);
 
       if (!html.includes('torrent-list')) continue;
       const items = parseCctv10Results(html, domain);
