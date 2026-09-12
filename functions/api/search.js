@@ -11,8 +11,6 @@ const JUNIORTER_PROVIDERS = [
 
 const KNABEN_API = 'https://api.knaben.org/v1';
 
-const YUHUAGE_API = 'https://www.yuhuage008.xyz';
-
 export async function onRequest(context) {
   const { request, waitUntil } = context;
   const url = new URL(request.url);
@@ -20,7 +18,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage,hufeng';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -33,25 +31,34 @@ export async function onRequest(context) {
     const tasks = [];
 
     if (sources.includes('0magnet')) {
-      tasks.push({ name: '0magnet', promise: fetchFrom0Magnet(query, sort, page, waitUntil) });
+      tasks.push({
+        name: '0magnet',
+        promise: fetchFrom0Magnet(query, sort, page, waitUntil),
+      });
     }
     if (sources.includes('xiaocao')) {
-      tasks.push({ name: 'xiaocao', promise: fetchFromXiaocao(query, page, sort, request, waitUntil) });
+      tasks.push({
+        name: 'xiaocao',
+        promise: fetchFromXiaocao(query, page, sort, request, waitUntil),
+      });
     }
     if (sources.includes('juniorter')) {
-      tasks.push({ name: 'juniorter', promise: fetchFromJuniorter(query, page, sort, waitUntil) });
+      tasks.push({
+        name: 'juniorter',
+        promise: fetchFromJuniorter(query, page, sort, waitUntil),
+      });
     }
     if (sources.includes('cilibaike')) {
-      tasks.push({ name: 'cilibaike', promise: fetchFromCilibaike(query, page, sort, request, waitUntil) });
+      tasks.push({
+        name: 'cilibaike',
+        promise: fetchFromCilibaike(query, page, sort, request, waitUntil),
+      });
     }
     if (sources.includes('knaben')) {
-      tasks.push({ name: 'knaben', promise: fetchFromKnaben(query, page, sort, waitUntil) });
-    }
-    if (sources.includes('yuhuage')) {
-      tasks.push({ name: 'yuhuage', promise: fetchFromYuhuage(query, page, sort, waitUntil) });
-    }
-    if (sources.includes('hufeng')) {
-      tasks.push({ name: 'hufeng', promise: fetchFromHufeng(query, page, sort, request, waitUntil) });
+      tasks.push({
+        name: 'knaben',
+        promise: fetchFromKnaben(query, page, sort, waitUntil),
+      });
     }
 
     const results = await Promise.allSettled(tasks.map(t => t.promise));
@@ -103,13 +110,17 @@ export async function onRequest(context) {
   }
 }
 
+// ========== 磁力链接简化 ==========
 function simplifyMagnet(magnet) {
   if (!magnet) return '';
   const match = magnet.match(/xt=urn:btih:([a-zA-Z0-9]{32,40})/i);
-  if (match) return `magnet:?xt=urn:btih:${match[1]}`;
+  if (match) {
+    return `magnet:?xt=urn:btih:${match[1]}`;
+  }
   return magnet;
 }
 
+// ========== 字节转可读格式 ==========
 function formatBytes(bytes) {
   if (!bytes || bytes <= 0) return '';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -118,17 +129,19 @@ function formatBytes(bytes) {
   return `${value.toFixed(2)} ${units[i]}`;
 }
 
-// ========== Knaben ==========
+// ========== Knaben 数据源（API） ==========
 async function fetchFromKnaben(query, page, sort, waitUntil) {
   const size = 100;
   const from = (page - 1) * size;
 
+  // 排序映射
   let orderBy = 'seeders';
   switch (sort) {
     case 'length': orderBy = 'bytes'; break;
     case 'time':
     case 'newest': orderBy = 'date'; break;
     case 'requests': orderBy = 'peers'; break;
+    case 'relevance':
     default: orderBy = 'seeders'; break;
   }
 
@@ -144,7 +157,10 @@ async function fetchFromKnaben(query, page, sort, waitUntil) {
     hide_xxx: false,
   };
 
-  const cacheKey = new Request(`https://knaben-cache.local/?q=${encodeURIComponent(query)}&page=${page}&sort=${sort}`, { method: 'GET' });
+  const cacheKey = new Request(
+  `https://knaben-cache.local/?q=${encodeURIComponent(query)}&page=${page}&sort=${sort}`,
+  { method: 'GET' }
+);
   const cache = caches.default;
 
   let response = await cache.match(cacheKey);
@@ -161,25 +177,36 @@ async function fetchFromKnaben(query, page, sort, waitUntil) {
       body: JSON.stringify(body),
     });
 
-    if (!response.ok) throw new Error(`Knaben HTTP ${response.status}`);
+    if (!response.ok) {
+      throw new Error(`Knaben HTTP ${response.status}`);
+    }
 
-    const text = await response.clone().text();
+    const cloned = response.clone();
+    const text = await cloned.text();
     const cacheResponse = new Response(text, {
-      headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'public, max-age=1800' },
+      headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Cache-Control': 'public, max-age=1800',
+      },
     });
     if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
     else await cache.put(cacheKey, cacheResponse);
   }
 
-  return parseKnabenResults(await response.json());
+  const data = await response.json();
+  return parseKnabenResults(data);
 }
 
 function parseKnabenResults(data) {
   const items = [];
-  for (const hit of (data.hits || [])) {
+  const hits = data.hits || [];
+
+  for (const hit of hits) {
     if (!hit.title) continue;
+
     const magnet = hit.magnetUrl ? simplifyMagnet(hit.magnetUrl) : (hit.hash ? `magnet:?xt=urn:btih:${hit.hash}` : '');
     if (!magnet) continue;
+
     items.push({
       name: hit.title,
       size: formatBytes(hit.bytes),
@@ -191,10 +218,11 @@ function parseKnabenResults(data) {
       source: 'knaben',
     });
   }
+
   return items;
 }
 
-// ========== domains.json ==========
+// ========== 读取 domains.json ==========
 async function getDomainsConfig(request) {
   try {
     const domainsUrl = new URL('/domains.json', request.url);
@@ -204,20 +232,23 @@ async function getDomainsConfig(request) {
       return {
         xiaocao: Array.isArray(data.xiaocao) ? data.xiaocao : [],
         cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
-        hufeng: Array.isArray(data.hufeng) ? data.hufeng : [],
       };
     }
   } catch (err) {
     console.error('Failed to load domains.json:', err);
   }
-  return { xiaocao: [], cilibaike: [], hufeng: [] };
+  return { xiaocao: [], cilibaike: [] };
 }
 
-// ========== 磁力百科 ==========
+// ========== 磁力百科数据源 ==========
 async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
   const config = await getDomainsConfig(request);
   const domains = config.cilibaike;
-  if (domains.length === 0) return [];
+
+  if (domains.length === 0) {
+    console.warn('Cilibaike: no available domains');
+    return [];
+  }
 
   let order = '0';
   switch (sort) {
@@ -225,6 +256,7 @@ async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
     case 'time':
     case 'newest': order = '2'; break;
     case 'requests': order = '3'; break;
+    case 'relevance':
     default: order = '0'; break;
   }
 
@@ -232,32 +264,49 @@ async function fetchFromCilibaike(query, page, sort, request, waitUntil) {
 
   for (const domain of domains) {
     try {
-      const html = await fetchWithCache(`${domain}${searchPath}?lang=zh_CN`, 3600, waitUntil);
-      if (!html.includes('resource-card')) continue;
+      const searchUrl = `${domain}${searchPath}?lang=zh_CN`;
+      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
+
+      if (!html.includes('resource-card')) {
+        continue;
+      }
+
       const items = parseCilibaikeResults(html, domain);
-      if (items.length > 0) return items;
+      if (items.length > 0) {
+        console.log(`Cilibaike using domain: ${domain}`);
+        return items;
+      }
     } catch (err) {
       console.error(`Cilibaike domain ${domain} failed:`, err);
     }
   }
+
   return [];
 }
 
 function parseCilibaikeResults(html, domain) {
   const items = [];
+
   const parts = html.split(/<article class="resource resource-card"[^>]*>/);
   for (let i = 1; i < parts.length; i++) {
     const block = parts[i];
+
     const titleMatch = block.match(/<h2><a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a><\/h2>/);
     if (!titleMatch) continue;
+
     const detailPath = titleMatch[1];
     const infoHash = titleMatch[2];
-    let name = titleMatch[3].replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+    let name = titleMatch[3]
+      .replace(/<[^>]+>/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     name = name.replace(/^【[^】]+】\s*/, '');
     if (!name) continue;
 
     const metaMatch = block.match(/<div class="meta resource-meta">([\s\S]*?)<\/div>/);
-    let size = '', date = '';
+    let size = '';
+    let date = '';
+
     if (metaMatch) {
       const meta = metaMatch[1];
       const sizeMatch = meta.match(/大小：\s*<span>([^<]+)<\/span>/);
@@ -267,16 +316,19 @@ function parseCilibaikeResults(html, domain) {
     }
 
     items.push({
-      name, size, date,
+      name,
+      size,
+      date,
       magnet: `magnet:?xt=urn:btih:${infoHash}`,
       detailUrl: `${domain}${detailPath}`,
       source: 'cilibaike',
     });
   }
+
   return items;
 }
 
-// ========== Juniorter ==========
+// ========== Juniorter 数据源 ==========
 async function fetchFromJuniorter(query, page, sort, waitUntil) {
   const juniorterSort = (sort === 'time' || sort === 'newest') ? 'date' : 'seeds';
   const apiUrl = `${JUNIORTER_API}?q=${encodeURIComponent(query)}&sort=${juniorterSort}&pageSize=50&providers=${encodeURIComponent(JUNIORTER_PROVIDERS)}`;
@@ -293,25 +345,39 @@ async function fetchFromJuniorter(query, page, sort, waitUntil) {
         'Referer': 'https://torrent.juniorter.in/ch/',
       },
     });
-    if (!response.ok) throw new Error(`Juniorter HTTP ${response.status}`);
 
-    const cacheResponse = new Response(await response.clone().text(), {
-      headers: { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'public, max-age=1800' },
+    if (!response.ok) {
+      throw new Error(`Juniorter HTTP ${response.status}`);
+    }
+
+    const cloned = response.clone();
+    const cacheResponse = new Response(await cloned.text(), {
+      headers: {
+        'Content-Type': 'text/event-stream; charset=utf-8',
+        'Cache-Control': 'public, max-age=1800',
+      },
     });
     if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
     else await cache.put(cacheKey, cacheResponse);
   }
 
-  return parseJuniorterSSE(await response.text());
+  const text = await response.text();
+  return parseJuniorterSSE(text);
 }
 
 function parseJuniorterSSE(text) {
   const items = [];
-  let currentEvent = null, currentData = '';
-  for (const line of text.split('\n')) {
-    if (line.startsWith('event: ')) currentEvent = line.slice(7).trim();
-    else if (line.startsWith('data: ')) currentData = line.slice(6);
-    else if (line === '' && currentEvent && currentData) {
+  const lines = text.split('\n');
+
+  let currentEvent = null;
+  let currentData = '';
+
+  for (const line of lines) {
+    if (line.startsWith('event: ')) {
+      currentEvent = line.slice(7).trim();
+    } else if (line.startsWith('data: ')) {
+      currentData = line.slice(6);
+    } else if (line === '' && currentEvent && currentData) {
       if (currentEvent === 'provider') {
         try {
           const parsed = JSON.parse(currentData);
@@ -331,20 +397,25 @@ function parseJuniorterSSE(text) {
               }
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          // 忽略
+        }
       }
-      currentEvent = null; currentData = '';
+      currentEvent = null;
+      currentData = '';
     }
   }
+
   return items;
 }
 
-// ========== 小草磁力 ==========
+// ========== 小草磁力数据源 ==========
 function getXiaocaoSortPath(sort) {
   switch (sort) {
     case 'length': return '-length';
     case 'time': return '-time';
     case 'requests': return '-requests';
+    case 'relevance':
     default: return '';
   }
 }
@@ -352,30 +423,49 @@ function getXiaocaoSortPath(sort) {
 async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
   const config = await getDomainsConfig(request);
   const domains = config.xiaocao;
-  if (domains.length === 0) return [];
+
+  if (domains.length === 0) {
+    console.warn('Xiaocao: no available domains');
+    return [];
+  }
+
   const sortPath = getXiaocaoSortPath(sort);
 
   for (const domain of domains) {
     try {
-      const html = await fetchWithCache(`${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`, 3600, waitUntil);
-      if (!html.includes('search-item')) continue;
+      const searchUrl = `${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`;
+      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
+
+      if (!html.includes('search-item')) {
+        continue;
+      }
+
       const items = parseXiaocaoResults(html, domain);
-      if (items.length > 0) return items;
+      if (items.length > 0) {
+        console.log(`Xiaocao using domain: ${domain}`);
+        return items;
+      }
     } catch (err) {
       console.error(`Xiaocao domain ${domain} failed:`, err);
     }
   }
+
   return [];
 }
 
 function parseXiaocaoResults(html, domain) {
   const items = [];
+
   const parts = html.split(/<div class="search-item[^"]*">/);
   for (let i = 1; i < parts.length; i++) {
     const block = parts[i];
+
     const titleMatch = block.match(/<a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/);
     if (!titleMatch) continue;
-    const name = titleMatch[3].replace(/<[^>]+>/g, '').trim();
+
+    const detailPath = titleMatch[1];
+    const infoHash = titleMatch[2];
+    let name = titleMatch[3].replace(/<[^>]+>/g, '').trim();
     if (!name) continue;
 
     const sizeMatch = block.match(/文件大小:\s*<b[^>]*>([^<]+)<\/b>/);
@@ -387,25 +477,30 @@ function parseXiaocaoResults(html, domain) {
       size: sizeMatch ? sizeMatch[1].trim() : '',
       date: dateMatch ? dateMatch[1].trim() : '',
       hot: hotMatch ? hotMatch[1].trim() : '',
-      magnet: `magnet:?xt=urn:btih:${titleMatch[2]}`,
-      detailUrl: `${domain}${titleMatch[1]}`,
+      magnet: `magnet:?xt=urn:btih:${infoHash}`,
+      detailUrl: `${domain}${detailPath}`,
       source: 'xiaocao',
     });
   }
+
   return items;
 }
 
-// ========== ØMagnet ==========
+// ========== ØMagnet 数据源 ==========
 async function fetchFrom0Magnet(query, sort, page, waitUntil) {
-  const searchHtml = await fetchWithCache(`https://0magnet.com/search?q=${encodeURIComponent(query)}&sort=${sort}&page=${page}`, 3600, waitUntil);
+  const searchUrl = `https://0magnet.com/search?q=${encodeURIComponent(query)}&sort=${sort}&page=${page}`;
+  const searchHtml = await fetchWithCache(searchUrl, 3600, waitUntil);
+
   const items = await parse0MagnetSearchResults(searchHtml);
   if (items.length === 0) return [];
+
   return await batchFetch0MagnetDetails(items, 5, waitUntil);
 }
 
 async function parse0MagnetSearchResults(html) {
   const items = [];
   let currentItem = null;
+
   const rewriter = new HTMLRewriter()
     .on('table.file-list tbody tr', {
       element(el) {
@@ -414,8 +509,15 @@ async function parse0MagnetSearchResults(html) {
       },
     })
     .on('td.result-title a', {
-      element(el) { if (currentItem) { const h = el.getAttribute('href'); if (h) currentItem.detailPath = h; } },
-      text(text) { if (currentItem) currentItem.name += text.text; },
+      element(el) {
+        if (!currentItem) return;
+        const href = el.getAttribute('href');
+        if (href) currentItem.detailPath = href;
+      },
+      text(text) {
+        if (!currentItem) return;
+        currentItem.name += text.text;
+      },
     })
     .on('td.result-meta div', {
       text(text) {
@@ -424,7 +526,9 @@ async function parse0MagnetSearchResults(html) {
         if (!t) return;
         if (t.includes('GB') || t.includes('MB') || t.includes('KB') || t.includes('B')) {
           if (!currentItem.size) currentItem.size = t;
-        } else if (t.match(/\d{4}-\d{2}-\d{2}/)) currentItem.date = t;
+        } else if (t.match(/\d{4}-\d{2}-\d{2}/)) {
+          currentItem.date = t;
+        }
       },
     });
 
@@ -441,7 +545,8 @@ async function batchFetch0MagnetDetails(items, concurrency, waitUntil) {
       try {
         const detailUrl = `https://0magnet.com${item.detailPath}`;
         const detailHtml = await fetchWithCache(detailUrl, 86400, waitUntil);
-        return { ...item, magnet: extractMagnetFrom0Magnet(detailHtml), detailUrl };
+        const magnet = extractMagnetFrom0Magnet(detailHtml);
+        return { ...item, magnet, detailUrl };
       } catch (err) {
         return { ...item, magnet: '', detailUrl: '' };
       }
@@ -454,156 +559,16 @@ async function batchFetch0MagnetDetails(items, concurrency, waitUntil) {
 function extractMagnetFrom0Magnet(html) {
   const match = html.match(/id="input-magnet"[^>]*value="([^"]+)"/);
   if (match) {
-    const full = match[1].replace(/&amp;/g, '&').replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+    const full = match[1]
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>');
     const hashMatch = full.match(/xt=urn:btih:([a-zA-Z0-9]+)/);
     if (hashMatch) return `magnet:?xt=urn:btih:${hashMatch[1]}`;
   }
   return '';
-}
-
-// ========== 雨花阁 ==========
-async function fetchFromYuhuage(query, page, sort, waitUntil) {
-  // 排序映射：默认 / time / size / filenums / views / active
-  let sortSuffix = '';
-  switch (sort) {
-    case 'time':
-    case 'newest': sortSuffix = '-time'; break;
-    case 'length': sortSuffix = '-size'; break;
-    case 'requests': sortSuffix = '-views'; break;
-    case 'relevance':
-    default: sortSuffix = ''; break;
-  }
-
-  const searchUrl = `${YUHUAGE_API}/search/${encodeURIComponent(query)}-${page}${sortSuffix}.html`;
-  const html = await fetchWithCache(searchUrl, 3600, waitUntil);
-
-  if (!html.includes('search-item')) {
-    return [];
-  }
-
-  return parseYuhuageResults(html);
-}
-
-function parseYuhuageResults(html) {
-  const items = [];
-
-  const parts = html.split(/<div class="search-item[^"]*">/);
-  for (let i = 1; i < parts.length; i++) {
-    const block = parts[i];
-
-    // 标题 + hash
-    const titleMatch = block.match(/<h3><a[^>]+href="\/hash\/([a-fA-F0-9]{40})\.html"[^>]*>([\s\S]*?)<\/a><\/h3>/);
-    if (!titleMatch) continue;
-
-    const infoHash = titleMatch[1];
-    let name = titleMatch[2]
-      .replace(/<[^>]+>/g, '')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!name) continue;
-
-    // 大小
-    const sizeMatch = block.match(/大小：<b[^>]*>([^<]+)<\/b>/);
-    // 创建时间
-    const dateMatch = block.match(/创建时间：<b>\s*([^<]+)<\/b>/);
-    // 文件数量
-    const fileMatch = block.match(/文件数量：<b[^>]*>([^<]+)<\/b>/);
-    // 热度
-    const hotMatch = block.match(/热度：<b>([^<]+)<\/b>/);
-
-    items.push({
-      name,
-      size: sizeMatch ? sizeMatch[1].trim() : '',
-      date: dateMatch ? dateMatch[1].trim() : '',
-      files: fileMatch ? fileMatch[1].trim() : '',
-      hot: hotMatch ? hotMatch[1].trim() : '',
-      magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `${YUHUAGE_API}/hash/${infoHash}.html`,
-      source: 'yuhuage',
-    });
-  }
-
-  return items;
-}
-
-// ========== 虎风 ==========
-async function fetchFromHufeng(query, page, sort, request, waitUntil) {
-  const config = await getDomainsConfig(request);
-  const domains = config.hufeng;
-  if (domains.length === 0) {
-    console.warn('Hufeng: no available domains');
-    return [];
-  }
-
-  // 排序映射：ctime / length / click
-  let sortParam = 'ctime';
-  switch (sort) {
-    case 'length': sortParam = 'length'; break;
-    case 'requests': sortParam = 'click'; break;
-    case 'time':
-    case 'newest':
-    case 'relevance':
-    default: sortParam = 'ctime'; break;
-  }
-
-  for (const domain of domains) {
-    try {
-      const searchUrl = `${domain}/search/${encodeURIComponent(query)}_${sortParam}_${page}.html`;
-      const html = await fetchWithCache(searchUrl, 3600, waitUntil);
-
-      if (!html.includes('class="result"')) continue;
-
-      const items = parseHufengResults(html, domain);
-      if (items.length > 0) {
-        console.log(`Hufeng using domain: ${domain}`);
-        return items;
-      }
-    } catch (err) {
-      console.error(`Hufeng domain ${domain} failed:`, err);
-    }
-  }
-  return [];
-}
-
-function parseHufengResults(html, domain) {
-  const items = [];
-
-  const parts = html.split(/<div class="result">/);
-  for (let i = 1; i < parts.length; i++) {
-    const block = parts[i];
-
-    const titleMatch = block.match(/<h3><a[^>]+href="\/([a-fA-F0-9]{40})\.html"[^>]*>([\s\S]*?)<\/a><\/h3>/);
-    if (!titleMatch) continue;
-
-    const infoHash = titleMatch[1];
-    let name = titleMatch[2]
-      .replace(/<[^>]+>/g, '')
-      .replace(/&amp;/g, '&')
-      .replace(/&lt;/g, '<')
-      .replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"')
-      .replace(/\s+/g, ' ')
-      .trim();
-    if (!name) continue;
-
-    const dateMatch = block.match(/时间：([^<]+)<\/span>/);
-    const sizeMatch = block.match(/大小：([^<]+)<\/span>/);
-
-    items.push({
-      name,
-      size: sizeMatch ? sizeMatch[1].trim() : '',
-      date: dateMatch ? dateMatch[1].trim() : '',
-      magnet: `magnet:?xt=urn:btih:${infoHash}`,
-      detailUrl: `${domain}/${infoHash}.html`,
-      source: 'hufeng',
-    });
-  }
-
-  return items;
 }
 
 // ========== 通用缓存与响应 ==========
@@ -626,7 +591,10 @@ async function fetchWithCache(url, ttl, waitUntil) {
 
   if (response.ok) {
     const cacheResponse = new Response(html, {
-      headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': `public, max-age=${ttl}` },
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+        'Cache-Control': `public, max-age=${ttl}`,
+      },
     });
     if (waitUntil) waitUntil(cache.put(cacheKey, cacheResponse));
     else await cache.put(cacheKey, cacheResponse);
@@ -638,6 +606,9 @@ async function fetchWithCache(url, ttl, waitUntil) {
 function jsonResponse(data, status = 200) {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json; charset=utf-8', 'Access-Control-Allow-Origin': '*' },
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      'Access-Control-Allow-Origin': '*',
+    },
   });
 }
