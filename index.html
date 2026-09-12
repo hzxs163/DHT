@@ -3,54 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>磁力搜索</title>
-
-  <link rel="icon" type="image/png" href="/icons/icon-192.png">
-  <link rel="apple-touch-icon" href="/icons/icon-192.png">
-  <link rel="manifest" href="/manifest.json">
-
-  <meta name="theme-color" content="#8a6a4a">
-  <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="磁力搜索">
+  <title>Ø Magnet - 磁力搜索</title>
   <style>
     :root {
-      /* ---------- 淡雅书院风 ---------- */
-      --bg: #f7f3ea;            /* 米白纸色 */
-      --paper: #fdfaf3;          /* 卡片纸色 */
-      --paper-2: #f2ecdf;        /* 稍深的纸色 */
-      --ink: #3a3226;            /* 墨色主文字 */
-      --ink-2: #6b6152;          /* 次要文字 */
-      --ink-3: #9b9080;          /* 淡墨辅助 */
-      --accent: #8a6a4a;         /* 暖棕主色 */
-      --accent-hover: #6f5238;   /* 深棕悬停 */
-      --accent-dim: #efe6d6;     /* 浅棕底 */
-      --jade: #5b7a6a;           /* 淡墨绿点缀 */
-      --jade-dim: #e6efe9;
-      --highlight-bg: #f6e6b8;   /* 高亮：旧宣纸黄 */
-      --border: #e0d7c4;         /* 淡棕边框 */
-      --border-hover: #c9bda4;
-      --card-shadow: 0 1px 2px rgba(90,70,40,0.05), 0 2px 8px rgba(90,70,40,0.04);
-      --card-shadow-hover: 0 2px 4px rgba(90,70,40,0.08), 0 6px 16px rgba(90,70,40,0.08);
-      --radius: 6px;
-      --green: #5b8a5b;
-      --red: #b04a3a;
-      --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Segoe UI", Roboto, sans-serif;
-      --font-serif: "Songti SC", "STSong", "SimSun", "Noto Serif SC", "Source Han Serif SC", Georgia, serif;
-      --font-mono: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace;
+      --bg: #ffffff;
+      --text-primary: #202124;
+      --text-secondary: #70757a;
+      --accent: #1a73e8;
+      --accent-hover: #1557b0;
+      --border: #e8eaed;
+      --border-hover: #dadce0;
+      --highlight-bg: #fef7e0;
+      --card-shadow: 0 1px 3px rgba(0,0,0,0.06);
+      --card-shadow-hover: 0 2px 8px rgba(0,0,0,0.1);
+      --radius: 8px;
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
 
     * { margin: 0; padding: 0; box-sizing: border-box; }
 
     body {
-      font-family: var(--font-sans);
+      font-family: var(--font);
       background: var(--bg);
-      /* 宣纸质感：极淡的噪点纹理 */
-      background-image:
-        radial-gradient(rgba(140,110,70,0.035) 1px, transparent 1px),
-        radial-gradient(rgba(140,110,70,0.025) 1px, transparent 1px);
-      background-size: 24px 24px, 24px 24px;
-      background-position: 0 0, 12px 12px;
-      color: var(--ink);
+      color: var(--text-primary);
       min-height: 100vh;
       display: flex;
       flex-direction: column;
@@ -64,58 +39,21 @@
       padding: 60px 0 32px;
       text-align: center;
       transition: padding 0.3s ease;
-      position: relative;
     }
 
     .header.compact { padding: 24px 0 16px; }
 
     .logo {
-      font-family: var(--font-serif);
-      font-size: 34px;
-      font-weight: 600;
-      color: var(--ink);
+      font-size: 32px;
+      font-weight: 700;
+      color: var(--text-primary);
       margin-bottom: 24px;
-      letter-spacing: 2px;
+      letter-spacing: -0.5px;
     }
 
-    .logo .zero { color: var(--accent); margin-right: 4px; }
+    .logo .zero { color: var(--accent); }
 
-    .header.compact .logo { font-size: 22px; margin-bottom: 16px; letter-spacing: 1px; }
-
-    /* ---------- qBittorrent 齿轮按钮 ---------- */
-    .qb-gear {
-      position: absolute;
-      top: 60px;
-      right: 0;
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      height: 34px;
-      padding: 0 12px;
-      font-size: 12.5px;
-      font-family: var(--font-sans);
-      color: var(--ink-2);
-      background: var(--paper);
-      border: 1px solid var(--border);
-      border-radius: 17px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: border-color 0.2s, color 0.2s;
-    }
-
-    .header.compact .qb-gear { top: 24px; }
-
-    .qb-gear:hover { border-color: var(--accent); color: var(--accent); }
-
-    .qb-gear .dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--border-hover);
-      flex-shrink: 0;
-    }
-
-    .qb-gear .dot.on { background: var(--jade); }
+    .header.compact .logo { font-size: 22px; margin-bottom: 16px; }
 
     .search-form {
       display: flex;
@@ -125,66 +63,97 @@
       position: relative;
     }
 
+    .source-dropdown { position: relative; flex-shrink: 0; }
+
+    .source-btn {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      height: 44px;
+      padding: 0 14px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: var(--text-primary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .source-btn:hover { border-color: var(--border-hover); }
+    .source-btn.open { border-color: var(--accent); box-shadow: 0 1px 6px rgba(26,115,232,0.15); }
+    .source-btn .arrow { font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; }
+    .source-btn.open .arrow { transform: rotate(180deg); }
+
+    .source-menu {
+      display: none;
+      position: absolute;
+      top: calc(100% + 6px);
+      left: 0;
+      min-width: 160px;
+      padding: 6px 0;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+      z-index: 100;
+    }
+
+    .source-menu.open { display: block; }
+
+    .source-option {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 14px;
+      font-size: 13px;
+      color: var(--text-primary);
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+
+    .source-option:hover { background: #f8f9fa; }
+
+    .source-option input[type="checkbox"] {
+      cursor: pointer;
+      accent-color: var(--accent);
+      width: 15px;
+      height: 15px;
+    }
+
+    .source-option span { user-select: none; }
+
     .search-input-wrap { flex: 1; position: relative; }
 
     .search-input {
       width: 100%;
       height: 44px;
-      padding: 0 40px 0 20px;
+      padding: 0 20px;
       font-size: 15px;
-      font-family: var(--font-sans);
-      color: var(--ink);
-      background: var(--paper);
+      font-family: var(--font);
+      color: var(--text-primary);
+      background: var(--bg);
       border: 1px solid var(--border);
-      border-radius: 10px;
+      border-radius: 24px;
       outline: none;
-      transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
-    .search-input::placeholder { color: var(--ink-3); }
-    .search-input:focus {
-      border-color: var(--accent);
-      background: #fffdf7;
-      box-shadow: 0 0 0 3px rgba(138,106,74,0.08);
-    }
-
-    /* X 清除按钮 */
-    .search-clear {
-      position: absolute;
-      top: 50%;
-      right: 10px;
-      transform: translateY(-50%);
-      width: 24px;
-      height: 24px;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      padding: 0;
-      border: none;
-      border-radius: 50%;
-      background: transparent;
-      color: var(--ink-3);
-      cursor: pointer;
-      transition: background 0.15s, color 0.15s;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .search-clear:hover { background: var(--paper-2); color: var(--accent); }
-    .search-clear:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-
-    .search-input-wrap.has-value .search-clear { display: flex; }
+    .search-input::placeholder { color: #9aa0a6; }
+    .search-input:focus { border-color: var(--accent); box-shadow: 0 1px 6px rgba(26,115,232,0.15); }
 
     .search-btn {
       height: 44px;
-      padding: 0 26px;
+      padding: 0 24px;
       font-size: 15px;
-      font-family: var(--font-sans);
+      font-family: var(--font);
       font-weight: 500;
-      letter-spacing: 1px;
       color: #fff;
       background: var(--accent);
       border: none;
-      border-radius: 10px;
+      border-radius: 24px;
       cursor: pointer;
       white-space: nowrap;
       flex-shrink: 0;
@@ -192,63 +161,7 @@
     }
 
     .search-btn:hover { background: var(--accent-hover); }
-    .search-btn:disabled { background: #c4b8a3; cursor: not-allowed; }
-
-    /* ---------- 源 chips ---------- */
-    .chips {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 8px;
-      margin-top: 14px;
-    }
-
-    .chip {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 6px 14px;
-      font-size: 13px;
-      font-family: var(--font-sans);
-      color: var(--ink-2);
-      background: var(--paper);
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      cursor: pointer;
-      user-select: none;
-      transition: border-color 0.2s, background 0.2s, color 0.2s;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .chip:hover { border-color: var(--border-hover); color: var(--ink); }
-
-    .chip .dot {
-      width: 7px;
-      height: 7px;
-      border-radius: 50%;
-      background: var(--border-hover);
-      flex-shrink: 0;
-      transition: background 0.2s;
-    }
-
-    .chip[data-on] {
-      color: var(--accent);
-      border-color: var(--accent);
-      background: var(--accent-dim);
-    }
-
-    .chip[data-on] .dot { background: var(--accent); }
-
-    @media (max-width: 768px) {
-      .chips {
-        justify-content: flex-start;
-        overflow-x: auto;
-        flex-wrap: nowrap;
-        padding-bottom: 4px;
-        -webkit-overflow-scrolling: touch;
-      }
-      .chip { flex-shrink: 0; }
-    }
+    .search-btn:disabled { background: #b0c4de; cursor: not-allowed; }
 
     .main { width: 100%; max-width: 720px; flex: 1; padding-bottom: 48px; }
 
@@ -257,63 +170,52 @@
       justify-content: space-between;
       align-items: center;
       font-size: 13px;
-      color: var(--ink-2);
+      color: var(--text-secondary);
       margin-bottom: 16px;
       padding: 0 4px;
     }
 
-    .result-bar .timing { color: var(--ink-3); margin-left: 6px; }
+    .result-bar .timing { color: #9aa0a6; margin-left: 6px; }
 
-    .sort-options { display: flex; gap: 14px; }
+    .sort-options { display: flex; gap: 12px; }
 
     .sort-options a {
-      color: var(--ink-3);
+      color: var(--text-secondary);
       text-decoration: none;
       transition: color 0.2s;
-      padding: 2px 0;
-      border-bottom: 1px solid transparent;
     }
 
-    .sort-options a:hover { color: var(--ink); }
-    .sort-options a.active {
-      color: var(--accent);
-      font-weight: 600;
-      border-bottom-color: var(--accent);
-    }
+    .sort-options a:hover { color: var(--text-primary); }
+    .sort-options a.active { color: var(--text-primary); font-weight: 600; }
 
     .result-list { display: flex; flex-direction: column; gap: 12px; }
 
     .result-card {
-      padding: 18px 20px;
-      background: var(--paper);
+      padding: 16px;
+      background: var(--bg);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       box-shadow: var(--card-shadow);
-      transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
 
-    .result-card:hover {
-      border-color: var(--border-hover);
-      box-shadow: var(--card-shadow-hover);
-    }
+    .result-card:hover { border-color: var(--border-hover); box-shadow: var(--card-shadow-hover); }
 
     .result-title {
-      font-family: var(--font-serif);
       font-size: 16px;
-      line-height: 1.6;
-      color: var(--ink);
+      line-height: 1.5;
+      color: var(--accent);
       text-decoration: none;
       display: block;
       margin-bottom: 10px;
       word-break: break-word;
-      transition: color 0.2s;
     }
 
-    .result-title:hover { color: var(--accent); }
+    .result-title:hover { text-decoration: underline; }
 
     .result-title mark {
       background: var(--highlight-bg);
-      color: var(--ink);
+      color: var(--text-primary);
       font-weight: 600;
       padding: 0 2px;
       border-radius: 2px;
@@ -323,203 +225,51 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 12.5px;
-      color: var(--ink-2);
+      font-size: 13px;
+      color: var(--text-secondary);
     }
 
-    .result-meta-left { display: flex; align-items: center; gap: 8px; }
-    .result-meta-left .dot { color: var(--border-hover); }
+    .result-meta-left { display: flex; align-items: center; gap: 6px; }
+    .result-meta-left .dot { color: #dadce0; }
 
     .result-source {
       font-size: 11px;
-      color: var(--jade);
-      background: var(--jade-dim);
+      color: #9aa0a6;
+      background: #f1f3f4;
       padding: 2px 8px;
       border-radius: 10px;
-      letter-spacing: .3px;
     }
 
     .magnet-row {
       display: flex;
       align-items: center;
       gap: 6px;
-      margin-top: 12px;
+      margin-top: 10px;
       padding: 8px 12px;
-      background: var(--paper-2);
+      background: #f8f9fa;
       border: 1px solid var(--border);
       border-radius: 6px;
+      cursor: pointer;
       transition: background 0.2s, border-color 0.2s;
       overflow: hidden;
     }
 
-    .magnet-row:hover { background: var(--accent-dim); border-color: var(--border-hover); }
-    .magnet-row.copied { background: var(--jade-dim); border-color: #c3d6c9; }
+    .magnet-row:hover { background: #e8f0fe; border-color: #c6dafc; }
+    .magnet-row.copied { background: #e6f4ea; border-color: #ceead6; }
 
-    .magnet-link {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      flex: 1;
-      min-width: 0;
-      text-decoration: none;
-      color: inherit;
-      cursor: pointer;
-      -webkit-tap-highlight-color: transparent;
-    }
-
-    .magnet-icon { flex-shrink: 0; color: var(--ink-3); }
-    .magnet-row.copied .magnet-icon { color: var(--jade); }
+    .magnet-icon { flex-shrink: 0; color: var(--text-secondary); }
+    .magnet-row.copied .magnet-icon { color: #34a853; }
 
     .magnet-text {
       font-size: 12px;
-      font-family: var(--font-mono);
-      color: var(--ink-2);
+      font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, monospace;
+      color: var(--text-secondary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
 
-    .magnet-row.copied .magnet-text { color: var(--jade); }
-
-    .magnet-copy-hint {
-      font-size: 11px;
-      color: var(--ink-3);
-      flex-shrink: 0;
-      white-space: nowrap;
-    }
-
-    @media (min-width: 769px) {
-      .magnet-copy-hint { display: none; }
-    }
-
-    .qb-btn {
-      flex-shrink: 0;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-      padding: 5px 12px;
-      font-size: 12px;
-      font-family: var(--font-sans);
-      font-weight: 500;
-      color: #fff;
-      background: var(--accent);
-      border: none;
-      border-radius: 5px;
-      cursor: pointer;
-      white-space: nowrap;
-      transition: background 0.2s;
-    }
-
-    .qb-btn:hover:not(:disabled) { background: var(--accent-hover); }
-    .qb-btn:disabled { background: #c4b8a3; cursor: not-allowed; }
-    .qb-btn.ok { background: var(--jade); }
-    .qb-btn.bad { background: var(--red); }
-
-    /* ---------- 弹窗 ---------- */
-    .qb-modal-backdrop {
-      position: fixed;
-      inset: 0;
-      background: rgba(58,50,38,0.35);
-      display: none;
-      align-items: center;
-      justify-content: center;
-      z-index: 1000;
-      padding: 16px;
-    }
-
-    .qb-modal-backdrop.open { display: flex; }
-
-    .qb-modal {
-      background: var(--paper);
-      border-radius: 10px;
-      width: 100%;
-      max-width: 400px;
-      box-shadow: 0 12px 40px rgba(58,50,38,0.18);
-      overflow: hidden;
-      border: 1px solid var(--border);
-    }
-
-    .qb-modal-head {
-      padding: 16px 20px;
-      border-bottom: 1px solid var(--border);
-      font-family: var(--font-serif);
-      font-size: 16px;
-      font-weight: 600;
-      letter-spacing: 1px;
-      color: var(--ink);
-    }
-
-    .qb-modal-body {
-      padding: 16px 20px;
-      display: grid;
-      gap: 12px;
-    }
-
-    .qb-modal-body label {
-      display: grid;
-      gap: 4px;
-      font-size: 13px;
-      color: var(--ink-2);
-    }
-
-    .qb-modal-body input {
-      padding: 8px 12px;
-      font-size: 14px;
-      font-family: var(--font-sans);
-      color: var(--ink);
-      background: #fffdf7;
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      outline: none;
-    }
-
-    .qb-modal-body input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(138,106,74,0.08); }
-
-    .qb-modal-hint {
-      font-size: 11px;
-      color: var(--ink-3);
-      line-height: 1.6;
-    }
-
-    .qb-modal-msg {
-      font-size: 12px;
-      line-height: 1.5;
-      min-height: 18px;
-    }
-
-    .qb-modal-msg.ok { color: var(--jade); }
-    .qb-modal-msg.bad { color: var(--red); }
-
-    .qb-modal-foot {
-      display: flex;
-      justify-content: flex-end;
-      gap: 8px;
-      padding: 12px 20px;
-      border-top: 1px solid var(--border);
-      background: var(--paper-2);
-    }
-
-    .qb-modal-foot button {
-      padding: 7px 16px;
-      font-size: 13px;
-      font-family: var(--font-sans);
-      border-radius: 6px;
-      cursor: pointer;
-      border: 1px solid var(--border);
-      background: var(--paper);
-      color: var(--ink);
-      transition: border-color 0.2s, color 0.2s;
-    }
-
-    .qb-modal-foot button:hover { border-color: var(--accent); color: var(--accent); }
-
-    .qb-modal-foot button.primary {
-      background: var(--accent);
-      border-color: var(--accent);
-      color: #fff;
-    }
-
-    .qb-modal-foot button.primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); color: #fff; }
+    .magnet-row.copied .magnet-text { color: #34a853; }
 
     /* ---------- 分页 ---------- */
     .pagination {
@@ -527,51 +277,47 @@
       justify-content: center;
       align-items: center;
       gap: 12px;
-      margin-top: 28px;
+      margin-top: 24px;
     }
 
     .page-btn {
-      padding: 8px 22px;
-      font-size: 13.5px;
-      font-family: var(--font-sans);
+      padding: 8px 20px;
+      font-size: 14px;
+      font-family: var(--font);
       color: var(--accent);
-      background: var(--paper);
+      background: none;
       border: 1px solid var(--border);
       border-radius: 20px;
       cursor: pointer;
-      transition: background 0.2s, border-color 0.2s, color 0.2s;
+      transition: background 0.2s, border-color 0.2s;
     }
 
     .page-btn:hover:not(:disabled) {
-      background: var(--accent-dim);
-      border-color: var(--accent);
+      background: #f8f9fa;
+      border-color: var(--border-hover);
     }
 
     .page-btn:disabled {
-      color: var(--ink-3);
+      color: #dadce0;
       cursor: not-allowed;
       border-color: var(--border);
-      background: var(--paper-2);
     }
 
     .page-info {
       font-size: 13px;
-      color: var(--ink-2);
+      color: var(--text-secondary);
       min-width: 60px;
       text-align: center;
-      font-family: var(--font-serif);
-      letter-spacing: 1px;
     }
 
     .loading { display: flex; flex-direction: column; gap: 12px; }
 
     .skeleton {
       height: 90px;
-      background: linear-gradient(90deg, var(--paper-2) 25%, #eae1cf 50%, var(--paper-2) 75%);
+      background: linear-gradient(90deg, #f1f3f4 25%, #e8eaed 50%, #f1f3f4 75%);
       background-size: 200% 100%;
-      animation: shimmer 1.6s infinite;
+      animation: shimmer 1.5s infinite;
       border-radius: var(--radius);
-      border: 1px solid var(--border);
     }
 
     @keyframes shimmer {
@@ -581,44 +327,34 @@
 
     .empty-state {
       text-align: center;
-      padding: 56px 16px;
-      color: var(--ink-2);
+      padding: 48px 16px;
+      color: var(--text-secondary);
     }
 
-    .empty-state .icon { font-size: 40px; margin-bottom: 14px; opacity: .8; }
-    .empty-state .title {
-      font-family: var(--font-serif);
-      font-size: 17px;
-      color: var(--ink);
-      margin-bottom: 6px;
-      letter-spacing: 1px;
-    }
-    .empty-state .desc { font-size: 13px; color: var(--ink-2); }
+    .empty-state .icon { font-size: 40px; margin-bottom: 12px; }
+    .empty-state .title { font-size: 16px; color: var(--text-primary); margin-bottom: 6px; }
+    .empty-state .desc { font-size: 13px; }
 
     .empty-state .retry-btn {
-      margin-top: 18px;
-      padding: 8px 22px;
+      margin-top: 16px;
+      padding: 8px 20px;
       font-size: 14px;
-      font-family: var(--font-sans);
+      font-family: var(--font);
       color: #fff;
       background: var(--accent);
       border: none;
       border-radius: 20px;
       cursor: pointer;
-      letter-spacing: 1px;
     }
 
     .empty-state .retry-btn:hover { background: var(--accent-hover); }
 
-    /* ---------- 热门搜索 ---------- */
-    .hot-searches { margin-top: 28px; text-align: center; }
+    .hot-searches { margin-top: 24px; text-align: center; }
 
     .hot-searches .label {
-      font-family: var(--font-serif);
       font-size: 13px;
-      color: var(--ink-2);
-      margin-bottom: 14px;
-      letter-spacing: 2px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
     }
 
     .hot-tags {
@@ -629,56 +365,82 @@
     }
 
     .hot-tag {
-      padding: 6px 16px;
+      padding: 6px 14px;
       font-size: 13px;
-      color: var(--ink-2);
-      background: var(--paper);
-      border: 1px solid var(--border);
+      color: var(--text-secondary);
+      background: #f1f3f4;
       border-radius: 16px;
       text-decoration: none;
-      transition: background 0.2s, color 0.2s, border-color 0.2s;
+      transition: background 0.2s, color 0.2s;
     }
 
-    .hot-tag:hover {
-      background: var(--accent-dim);
-      color: var(--accent);
-      border-color: var(--accent);
-    }
+    .hot-tag:hover { background: #e8eaed; color: var(--text-primary); }
 
     .footer {
       width: 100%;
       max-width: 720px;
-      padding: 22px 0;
+      padding: 20px 0;
       border-top: 1px solid var(--border);
       text-align: center;
       font-size: 12px;
-      color: var(--ink-3);
-      letter-spacing: .5px;
+      color: var(--text-secondary);
     }
 
     @media (max-width: 768px) {
       .header { padding: 40px 0 24px; }
-      .logo { font-size: 26px; letter-spacing: 1px; }
-      .qb-gear { top: 40px; height: 30px; padding: 0 10px; font-size: 11.5px; }
-      .header.compact .qb-gear { top: 20px; }
-      .search-form { flex-wrap: nowrap; }
-      .search-input-wrap { flex: 1 1 auto; min-width: 0; }
-      .search-btn { flex: 0 0 auto; padding: 0 16px; font-size: 14px; }
+      .logo { font-size: 26px; }
+      .search-form { flex-wrap: wrap; }
+      .source-dropdown { order: 2; }
+      .search-input-wrap { order: 1; flex: 1 0 100%; }
+      .search-btn { order: 3; flex: 1; }
+      .source-btn { height: 38px; padding: 0 12px; font-size: 13px; }
       .result-title { font-size: 15px; }
-      .result-card { padding: 16px; }
     }
   </style>
 </head>
 <body>
 
   <header class="header" id="header">
-    <button type="button" class="qb-gear" id="qbGear" title="配置 qBittorrent">
-      <span class="dot" id="qbDot"></span>
-      qBittorrent
-    </button>
-    <div class="logo"><span class="zero">🧲</span>磁力搜索</div>
+    <div class="logo"><span class="zero">Ø</span> Magnet</div>
     <form class="search-form" id="searchForm">
-      <div class="search-input-wrap" id="searchInputWrap">
+      <div class="source-dropdown" id="sourceDropdown">
+        <button type="button" class="source-btn" id="sourceBtn">
+          <span id="sourceLabel">全部源</span>
+          <span class="arrow">▼</span>
+        </button>
+<div class="source-menu" id="sourceMenu">
+  <label class="source-option">
+    <input type="checkbox" value="0magnet" checked>
+    <span>ØMagnet</span>
+  </label>
+  <label class="source-option">
+    <input type="checkbox" value="xiaocao" checked>
+    <span>小草磁力</span>
+  </label>
+  <label class="source-option">
+    <input type="checkbox" value="juniorter" checked>
+    <span>Juniorter</span>
+  </label>
+  <label class="source-option">
+    <input type="checkbox" value="cilibaike" checked>
+    <span>磁力百科</span>
+  </label>
+  <label class="source-option">
+    <input type="checkbox" value="knaben" checked>
+    <span>Knaben</span>
+  </label>
+  <label class="source-option">
+    <input type="checkbox" value="yuhuage" checked>
+    <span>雨花阁</span>
+  </label>
+    <label class="source-option">
+    <input type="checkbox" value="hufeng" checked>
+    <span>虎风</span>
+  </label>
+</div>
+        </div>
+      </div>
+      <div class="search-input-wrap">
         <input
           type="text"
           class="search-input"
@@ -687,21 +449,14 @@
           autocomplete="off"
           autofocus
         />
-        <button type="button" class="search-clear" id="searchClear" aria-label="清空" title="清空">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-          </svg>
-        </button>
       </div>
       <button type="submit" class="search-btn" id="searchBtn">搜索</button>
     </form>
-    <div class="chips" id="chips"></div>
   </header>
 
   <main class="main" id="main">
     <div class="hot-searches" id="hotSearches">
-      <div class="label">热 门 搜 索</div>
+      <div class="label">热门搜索</div>
       <div class="hot-tags">
         <a class="hot-tag" href="javascript:void(0)" data-q="CorelDRAW">CorelDRAW</a>
         <a class="hot-tag" href="javascript:void(0)" data-q="Photoshop">Photoshop</a>
@@ -718,237 +473,72 @@
     免责声明 · 本站仅聚合第三方搜索结果，不存储任何资源
   </footer>
 
-  <div class="qb-modal-backdrop" id="qbModal">
-    <div class="qb-modal">
-      <div class="qb-modal-head">qBittorrent 设置</div>
-      <div class="qb-modal-body">
-        <label>
-          WebUI 地址
-          <input id="qbUrl" type="text" placeholder="https://qb.step.cc.cd" spellcheck="false">
-        </label>
-        <label>
-          用户名
-          <input id="qbUser" type="text" autocomplete="off" spellcheck="false">
-        </label>
-        <label>
-          密码
-          <input id="qbPass" type="password" autocomplete="new-password">
-        </label>
-        <div class="qb-modal-hint">
-          地址填你暴露到公网的 qBittorrent WebUI。用户名密码存在本机浏览器，不会上传。
-        </div>
-        <div class="qb-modal-msg" id="qbMsg"></div>
-      </div>
-      <div class="qb-modal-foot">
-        <button id="qbCancel">取消</button>
-        <button class="primary" id="qbSave">保存</button>
-      </div>
-    </div>
-  </div>
-
   <script>
     const API_BASE = '';
-
-    // ---------- 源定义 ----------
-    const SOURCES = [
-      { id: '0magnet',   label: 'ØMagnet' },
-      { id: 'xiaocao',   label: '小草磁力' },
-      { id: 'juniorter', label: 'Juniorter' },
-      { id: 'cilibaike', label: '磁力百科' },
-      { id: 'knaben',    label: 'Knaben' },
-      { id: 'yuhuage',   label: '雨花阁' },
-      { id: 'hufeng',    label: '虎风' },
-    ];
-
-    const DEFAULT_SOURCES = ['0magnet'];
-
-    // ---------- qBittorrent ----------
-    const QB_STORAGE_KEY = 'qb_config';
-    const QB_DEFAULT = { url: 'https://qb.step.cc.cd', user: '', pass: '' };
-    let qbConfig = { ...QB_DEFAULT };
-
-    function loadQbConfig() {
-      try {
-        const raw = localStorage.getItem(QB_STORAGE_KEY);
-        if (raw) {
-          const c = JSON.parse(raw);
-          qbConfig = { ...QB_DEFAULT, ...c };
-        }
-      } catch (e) { /* 忽略 */ }
-      updateQbDot();
-    }
-
-    function saveQbConfig() {
-      localStorage.setItem(QB_STORAGE_KEY, JSON.stringify(qbConfig));
-      updateQbDot();
-    }
-
-    function updateQbDot() {
-      const dot = document.getElementById('qbDot');
-      if (qbConfig.url && qbConfig.user) {
-        dot.classList.add('on');
-      } else {
-        dot.classList.remove('on');
-      }
-    }
-
-    const qbModal = document.getElementById('qbModal');
-    const qbUrlInput = document.getElementById('qbUrl');
-    const qbUserInput = document.getElementById('qbUser');
-    const qbPassInput = document.getElementById('qbPass');
-    const qbMsg = document.getElementById('qbMsg');
-
-    function openQbModal() {
-      qbUrlInput.value = qbConfig.url || '';
-      qbUserInput.value = qbConfig.user || '';
-      qbPassInput.value = qbConfig.pass || '';
-      qbMsg.textContent = '';
-      qbMsg.className = 'qb-modal-msg';
-      qbModal.classList.add('open');
-    }
-
-    function closeQbModal() {
-      qbModal.classList.remove('open');
-    }
-
-    document.getElementById('qbGear').addEventListener('click', openQbModal);
-    document.getElementById('qbCancel').addEventListener('click', closeQbModal);
-
-    document.getElementById('qbSave').addEventListener('click', () => {
-      const url = qbUrlInput.value.trim().replace(/\/+$/, '');
-      const user = qbUserInput.value.trim();
-      const pass = qbPassInput.value;
-
-      if (!url) {
-        qbMsg.textContent = '请填写 WebUI 地址';
-        qbMsg.className = 'qb-modal-msg bad';
-        return;
-      }
-
-      qbConfig = { url, user, pass };
-      saveQbConfig();
-      qbMsg.textContent = '已保存';
-      qbMsg.className = 'qb-modal-msg ok';
-      setTimeout(closeQbModal, 600);
-    });
-
-    qbModal.addEventListener('click', (e) => {
-      if (e.target === qbModal) closeQbModal();
-    });
-
-    async function pushToQb(magnet, btn) {
-      if (!qbConfig.url || !qbConfig.user) {
-        openQbModal();
-        return;
-      }
-
-      btn.disabled = true;
-      btn.textContent = '发送中…';
-      btn.className = 'qb-btn';
-
-      try {
-        const loginRes = await fetch(qbConfig.url + '/api/v2/auth/login', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'username=' + encodeURIComponent(qbConfig.user) +
-                '&password=' + encodeURIComponent(qbConfig.pass),
-        });
-        const loginText = (await loginRes.text()).trim();
-        if (loginText !== 'Ok.') {
-          throw new Error('登录失败，检查用户名密码');
-        }
-
-        const addRes = await fetch(qbConfig.url + '/api/v2/torrents/add', {
-          method: 'POST',
-          credentials: 'include',
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-          body: 'urls=' + encodeURIComponent(magnet),
-        });
-        const addText = (await addRes.text()).trim();
-        if (addText !== 'Ok.') {
-          throw new Error('添加失败: ' + addText);
-        }
-
-        btn.textContent = '已发送 ✓';
-        btn.className = 'qb-btn ok';
-        btn.disabled = false;
-        setTimeout(() => {
-          btn.textContent = '下载';
-          btn.className = 'qb-btn';
-        }, 3000);
-      } catch (err) {
-        console.error('推送到 qBittorrent 失败:', err);
-        btn.textContent = '失败';
-        btn.className = 'qb-btn bad';
-        btn.disabled = false;
-        setTimeout(() => {
-          btn.textContent = '下载';
-          btn.className = 'qb-btn';
-        }, 3000);
-      }
-    }
 
     const header = document.getElementById('header');
     const searchForm = document.getElementById('searchForm');
     const searchInput = document.getElementById('searchInput');
-    const searchInputWrap = document.getElementById('searchInputWrap');
-    const searchClear = document.getElementById('searchClear');
     const searchBtn = document.getElementById('searchBtn');
     const resultArea = document.getElementById('resultArea');
     const hotSearches = document.getElementById('hotSearches');
-    const chipsEl = document.getElementById('chips');
+
+    const sourceDropdown = document.getElementById('sourceDropdown');
+    const sourceBtn = document.getElementById('sourceBtn');
+    const sourceMenu = document.getElementById('sourceMenu');
+    const sourceLabel = document.getElementById('sourceLabel');
 
     let currentQuery = '';
     let currentPage = 1;
     let currentSort = 'newest';
     let isLoading = false;
-    const selectedSources = new Set(DEFAULT_SOURCES);
 
-    // ---------- X 清除按钮 ----------
-    function updateClearBtn() {
-      if (searchInput.value.length > 0) {
-        searchInputWrap.classList.add('has-value');
-      } else {
-        searchInputWrap.classList.remove('has-value');
-      }
-    }
-    searchInput.addEventListener('input', updateClearBtn);
-    updateClearBtn();
-    searchClear.addEventListener('click', () => {
-      searchInput.value = '';
-      updateClearBtn();
-      searchInput.focus();
+    // ---------- 数据源下拉交互 ----------
+    sourceBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      sourceMenu.classList.toggle('open');
+      sourceBtn.classList.toggle('open');
     });
 
-    // ---------- chips ----------
-    function buildChips() {
-      chipsEl.replaceChildren();
-      for (const s of SOURCES) {
-        const el = document.createElement('button');
-        el.type = 'button';
-        el.className = 'chip';
-        el.dataset.id = s.id;
-        if (selectedSources.has(s.id)) el.setAttribute('data-on', '');
-        el.innerHTML = '<span class="dot"></span>' + s.label;
-        el.addEventListener('click', () => {
-          if (selectedSources.has(s.id)) {
-            selectedSources.delete(s.id);
-          } else {
-            selectedSources.add(s.id);
-          }
-          el.toggleAttribute('data-on');
-        });
-        chipsEl.appendChild(el);
+    document.addEventListener('click', (e) => {
+      if (!sourceDropdown.contains(e.target)) {
+        sourceMenu.classList.remove('open');
+        sourceBtn.classList.remove('open');
+      }
+    });
+
+    sourceMenu.addEventListener('change', () => {
+      updateSourceLabel();
+    });
+
+    function updateSourceLabel() {
+      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
+      const checked = Array.from(checkboxes).filter(c => c.checked);
+
+      if (checked.length === 0) {
+        checkboxes.forEach(c => c.checked = true);
+        sourceLabel.textContent = '全部源';
+        return;
+      }
+
+      if (checked.length === checkboxes.length) {
+        sourceLabel.textContent = '全部源';
+      } else {
+        sourceLabel.textContent = checked.map(c => {
+          const label = c.nextElementSibling;
+          return label ? label.textContent : c.value;
+        }).join('、');
       }
     }
 
     function getSelectedSources() {
-      return SOURCES.filter(s => selectedSources.has(s.id)).map(s => s.id);
+      const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
+      const checked = Array.from(checkboxes).filter(c => c.checked);
+      if (checked.length === 0) {
+        return Array.from(checkboxes).map(c => c.value);
+      }
+      return checked.map(c => c.value);
     }
-
-    loadQbConfig();
-    buildChips();
 
     // ---------- 搜索 ----------
     searchForm.addEventListener('submit', (e) => {
@@ -961,21 +551,14 @@
       tag.addEventListener('click', () => {
         const q = tag.dataset.q;
         searchInput.value = q;
-        updateClearBtn();
         doSearch(q, 1);
       });
     });
 
     async function doSearch(query, page = 1) {
       if (isLoading) return;
-
-      const sources = getSelectedSources();
-      if (sources.length === 0) {
-        alert('请至少选择一个源');
-        return;
-      }
-
       isLoading = true;
+
       currentQuery = query;
       currentPage = page;
 
@@ -996,12 +579,14 @@
       searchBtn.disabled = true;
       searchBtn.textContent = '搜索中';
 
+      // 翻页时滚动到顶部
       if (page > 1) {
         window.scrollTo({ top: 0, behavior: 'smooth' });
       }
 
       try {
-        const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&page=${page}&sort=${currentSort}&sources=${encodeURIComponent(sources.join(','))}`;
+        const sources = getSelectedSources().join(',');
+        const url = `${API_BASE}/api/search?q=${encodeURIComponent(query)}&page=${page}&sort=${currentSort}&sources=${encodeURIComponent(sources)}`;
         const res = await fetch(url);
 
         if (!res.ok) {
@@ -1029,7 +614,7 @@
       if (results.length === 0 && page === 1) {
         resultArea.innerHTML = `
           <div class="empty-state">
-            <div class="icon">🍃</div>
+            <div class="icon">😕</div>
             <div class="title">未找到相关结果</div>
             <div class="desc">试试其他关键词，或检查拼写</div>
           </div>
@@ -1068,16 +653,12 @@
               </div>
             </div>
             ${magnet ? `
-              <div class="magnet-row" data-magnet="${escapeAttr(magnet)}">
-                <a class="magnet-link" href="${escapeAttr(magnet)}" title="点击打开 / 长按复制">
-                  <svg class="magnet-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                  </svg>
-                  <span class="magnet-text">${escapeHtml(magnet)}</span>
-                  <span class="magnet-copy-hint">长按复制</span>
-                </a>
-                <button type="button" class="qb-btn" data-magnet="${escapeAttr(magnet)}">下载</button>
+              <div class="magnet-row" data-magnet="${escapeAttr(magnet)}" title="点击复制磁力链接">
+                <svg class="magnet-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                </svg>
+                <span class="magnet-text">${escapeHtml(magnet)}</span>
               </div>
             ` : ''}
           </div>
@@ -1086,6 +667,7 @@
 
       html += `</div>`;
 
+      // 分页
       html += `
         <div class="pagination">
           <button class="page-btn" id="prevBtn" ${page <= 1 ? 'disabled' : ''}>上一页</button>
@@ -1096,44 +678,12 @@
 
       resultArea.innerHTML = html;
 
+      // 绑定复制
       resultArea.querySelectorAll('.magnet-row').forEach(row => {
-        const link = row.querySelector('.magnet-link');
-        if (!link) return;
-        let longPressTimer = null;
-
-        const start = () => {
-          longPressTimer = setTimeout(() => {
-            longPressTimer = null;
-            copyMagnetRow(row);
-          }, 500);
-        };
-
-        const cancel = () => {
-          if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-          }
-        };
-
-        link.addEventListener('touchstart', start, { passive: true });
-        link.addEventListener('touchend', cancel);
-        link.addEventListener('touchmove', cancel, { passive: true });
-        link.addEventListener('touchcancel', cancel);
-
-        link.addEventListener('contextmenu', (e) => {
-          e.preventDefault();
-          copyMagnetRow(row);
-        });
+        row.addEventListener('click', () => copyMagnetRow(row));
       });
 
-      resultArea.querySelectorAll('.qb-btn').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.preventDefault();
-          const magnet = btn.dataset.magnet;
-          if (magnet) pushToQb(magnet, btn);
-        });
-      });
-
+      // 绑定排序
       resultArea.querySelectorAll('.sort-options a').forEach(a => {
         a.addEventListener('click', () => {
           currentSort = a.dataset.sort;
@@ -1141,6 +691,7 @@
         });
       });
 
+      // 绑定翻页
       const prevBtn = document.getElementById('prevBtn');
       const nextBtn = document.getElementById('nextBtn');
       if (prevBtn) {
