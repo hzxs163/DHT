@@ -23,7 +23,7 @@ jobs:
           python-version: '3.11'
 
       - name: Install dependencies
-        run: pip install requests
+        run: pip install curl_cffi
 
       - name: Extract domains
         run: python check_domains.py
