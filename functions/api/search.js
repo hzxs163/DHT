@@ -23,7 +23,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage,hufeng,cctv10,cilimao';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage,hufeng,cctv10,cilimao,ciliso';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -48,7 +48,7 @@ export async function onRequest(context) {
       tasks.push({ name: 'juniorter', promise: fetchFromJuniorter(query, page, sort, waitUntil) });
     }
     if (sources.includes('cilibaike')) {
-      tasks.push({ name: 'cilibaike', promise: fetchFromCilibaike(query, page, sort, waitUntil) });
+      tasks.push({ name: 'cilibaike', promise: fetchFromCilibaike(query, page, sort, waitUntil, 'cilibaike') });
     }
     if (sources.includes('knaben')) {
       tasks.push({ name: 'knaben', promise: fetchFromKnaben(query, page, sort, waitUntil) });
@@ -64,6 +64,9 @@ export async function onRequest(context) {
     }
     if (sources.includes('cilimao')) {
       tasks.push({ name: 'cilimao', promise: fetchFromCilimao(query, page, sort, waitUntil) });
+    }
+    if (sources.includes('ciliso')) {
+      tasks.push({ name: 'ciliso', promise: fetchFromCilibaike(query, page, sort, waitUntil, 'ciliso') });
     }
 
     const results = await Promise.allSettled(tasks.map(t => t.promise));
@@ -142,6 +145,7 @@ function getDomainsConfig() {
     yuhuage: Array.isArray(data.yuhuage) ? data.yuhuage : [],
     cctv10: Array.isArray(data.cctv10) ? data.cctv10 : [],
     cilimao: Array.isArray(data.cilimao) ? data.cilimao : [],
+    ciliso: Array.isArray(data.ciliso) ? data.ciliso : [],
   };
 }
 
@@ -221,10 +225,10 @@ function parseKnabenResults(data) {
   return items;
 }
 
-// ========== 磁力百科 ==========
-async function fetchFromCilibaike(query, page, sort, waitUntil) {
+// ========== 磁力百科 / 磁力搜（共用） ==========
+async function fetchFromCilibaike(query, page, sort, waitUntil, sourceKey = 'cilibaike') {
   const config = getDomainsConfig();
-  const domains = config.cilibaike;
+  const domains = config[sourceKey];
   if (domains.length === 0) return [];
 
   let order = '0';
@@ -242,16 +246,16 @@ async function fetchFromCilibaike(query, page, sort, waitUntil) {
     try {
       const html = await fetchWithCache(`${domain}${searchPath}?lang=zh_CN`, 3600, waitUntil);
       if (!html.includes('resource-card')) continue;
-      const items = parseCilibaikeResults(html, domain);
+      const items = parseCilibaikeResults(html, domain, sourceKey);
       if (items.length > 0) return items;
     } catch (err) {
-      console.error(`Cilibaike domain ${domain} failed:`, err);
+      console.error(`${sourceKey} domain ${domain} failed:`, err);
     }
   }
   return [];
 }
 
-function parseCilibaikeResults(html, domain) {
+function parseCilibaikeResults(html, domain, sourceKey = 'cilibaike') {
   const items = [];
   const parts = html.split(/<article class="resource resource-card"[^>]*>/);
   for (let i = 1; i < parts.length; i++) {
@@ -278,7 +282,7 @@ function parseCilibaikeResults(html, domain) {
       name, size, date,
       magnet: `magnet:?xt=urn:btih:${infoHash}`,
       detailUrl: `${domain}${detailPath}`,
-      source: 'cilibaike',
+      source: sourceKey,
     });
   }
   return items;
@@ -695,11 +699,9 @@ async function fetchFromCilimao(query, page, sort, waitUntil) {
 
       const html = await fetchWithCache(searchUrl, 1800, waitUntil);
       CILIMAO_DEBUG.htmlLen = html.length;
-      CILIMAO_DEBUG.htmlHead = html.slice(0, 300);
 
       const decoded = decodeAtobHtml(html);
       CILIMAO_DEBUG.decodedLen = decoded ? decoded.length : 0;
-      CILIMAO_DEBUG.decodedHead = decoded ? decoded.slice(0, 500) : null;
 
       if (!decoded) {
         CILIMAO_DEBUG.error = 'decodeAtobHtml failed';
@@ -716,7 +718,6 @@ async function fetchFromCilimao(query, page, sort, waitUntil) {
       }
 
       CILIMAO_DEBUG.linksCount = links.length;
-      CILIMAO_DEBUG.linksSample = links.slice(0, 3);
 
       if (links.length === 0) {
         CILIMAO_DEBUG.error = 'no links parsed';
