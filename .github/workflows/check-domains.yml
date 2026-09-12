@@ -1,9 +1,8 @@
-name: Update Xiaocao Domains
+name: 域名更新
 
 on:
   schedule:
-    # 每天 UTC 0 点运行一次（北京时间 8 点）
-    - cron: '0 0 * * *'
+    - cron: '*/30 * * * *'
   # 允许手动触发
   workflow_dispatch:
 
