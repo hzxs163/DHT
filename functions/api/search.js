@@ -14,6 +14,7 @@ const JUNIORTER_PROVIDERS = [
 const KNABEN_API = 'https://api.knaben.org/v1';
 
 let CCTV10_DEBUG = {};
+let CILIMAO_DEBUG = {};
 
 export async function onRequest(context) {
   const { request, waitUntil } = context;
@@ -30,6 +31,7 @@ export async function onRequest(context) {
   }
 
   CCTV10_DEBUG = {};
+  CILIMAO_DEBUG = {};
 
   const startTime = Date.now();
 
@@ -104,13 +106,14 @@ export async function onRequest(context) {
         page: page,
         totalBeforeDedup: allItems.length,
         cctv10Raw: CCTV10_DEBUG,
+        cilimaoRaw: CILIMAO_DEBUG,
         ...debug,
       },
     });
 
   } catch (err) {
     console.error('Search error:', err);
-    return jsonResponse({ error: 'Search failed', detail: String(err), cctv10Raw: CCTV10_DEBUG }, 502);
+    return jsonResponse({ error: 'Search failed', detail: String(err), cctv10Raw: CCTV10_DEBUG, cilimaoRaw: CILIMAO_DEBUG }, 502);
   }
 }
 
@@ -674,16 +677,34 @@ function decodeAtobHtml(html) {
 async function fetchFromCilimao(query, page, sort, waitUntil) {
   const config = getDomainsConfig();
   const domains = config.cilimao;
-  if (domains.length === 0) return [];
+  CILIMAO_DEBUG.domains = domains;
+  CILIMAO_DEBUG.query = query;
+
+  if (domains.length === 0) {
+    CILIMAO_DEBUG.error = 'no domains';
+    return [];
+  }
 
   const wordB64 = btoa(query).replace(/=+$/, '');
+  CILIMAO_DEBUG.wordB64 = wordB64;
 
   for (const domain of domains) {
     try {
       const searchUrl = `${domain}/search?word=${wordB64}&sort=rele&p=${page}`;
+      CILIMAO_DEBUG.searchUrl = searchUrl;
+
       const html = await fetchWithCache(searchUrl, 1800, waitUntil);
+      CILIMAO_DEBUG.htmlLen = html.length;
+      CILIMAO_DEBUG.htmlHead = html.slice(0, 300);
+
       const decoded = decodeAtobHtml(html);
-      if (!decoded) continue;
+      CILIMAO_DEBUG.decodedLen = decoded ? decoded.length : 0;
+      CILIMAO_DEBUG.decodedHead = decoded ? decoded.slice(0, 500) : null;
+
+      if (!decoded) {
+        CILIMAO_DEBUG.error = 'decodeAtobHtml failed';
+        continue;
+      }
 
       const links = [];
       const linkRe = /<a[^>]+href="(\/information\/[a-zA-Z0-9]+)"[^>]*>([\s\S]*?)<\/a>/g;
@@ -694,11 +715,20 @@ async function fetchFromCilimao(query, page, sort, waitUntil) {
         if (name) links.push({ detailPath, name });
       }
 
-      if (links.length === 0) continue;
+      CILIMAO_DEBUG.linksCount = links.length;
+      CILIMAO_DEBUG.linksSample = links.slice(0, 3);
+
+      if (links.length === 0) {
+        CILIMAO_DEBUG.error = 'no links parsed';
+        continue;
+      }
 
       const items = await batchFetchCilimaoDetails(links, 5, domain, waitUntil);
+      CILIMAO_DEBUG.itemsCount = items.length;
+
       if (items.length > 0) return items;
     } catch (err) {
+      CILIMAO_DEBUG.error = String(err);
       console.error(`Cilimao domain ${domain} failed:`, err);
     }
   }
