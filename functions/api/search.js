@@ -199,16 +199,8 @@ async function getDomainsConfig(request) {
   try {
     const domainsUrl = new URL('/domains.json', request.url);
     const res = await fetch(domainsUrl.toString());
-
-    // ---- 临时调试：看 /domains.json 的响应状态和类型 ----
-    console.log(`[domains] status=${res.status} ct=${res.headers.get('content-type')} url=${domainsUrl.toString()}`);
-
     if (res.ok) {
       const data = await res.json();
-
-      // ---- 临时调试：看读到的 xiaocao 列表 ----
-      console.log(`[domains] xiaocao=${JSON.stringify(data.xiaocao)}`);
-
       return {
         xiaocao: Array.isArray(data.xiaocao) ? data.xiaocao : [],
         cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
@@ -357,50 +349,31 @@ function getXiaocaoSortPath(sort) {
   }
 }
 
+// !!! 下面是临时调试版：不再抓取，直接把 domains.json 的内容通过 API 返回，用来排查问题。
+// 排查完记得换回原版 fetchFromXiaocao。
 async function fetchFromXiaocao(query, page, sort, request, waitUntil) {
   const config = await getDomainsConfig(request);
   const domains = config.xiaocao;
-  if (domains.length === 0) return [];
-  const sortPath = getXiaocaoSortPath(sort);
 
-  for (const domain of domains) {
-    try {
-      const html = await fetchWithCache(`${domain}/search/kw-${encodeURIComponent(query)}${sortPath}-${page}.html`, 3600, waitUntil);
-      if (!html.includes('search-item')) continue;
-      const items = parseXiaocaoResults(html, domain);
-      if (items.length > 0) return items;
-    } catch (err) {
-      console.error(`Xiaocao domain ${domain} failed:`, err);
-    }
+  if (domains.length === 0) {
+    return [{
+      name: '[DEBUG] domains 为空（getDomainsConfig 没读到 xiaocao）',
+      size: '',
+      date: '',
+      magnet: '',
+      detailUrl: '',
+      source: 'xiaocao-debug',
+    }];
   }
-  return [];
-}
 
-function parseXiaocaoResults(html, domain) {
-  const items = [];
-  const parts = html.split(/<div class="search-item[^"]*">/);
-  for (let i = 1; i < parts.length; i++) {
-    const block = parts[i];
-    const titleMatch = block.match(/<a[^>]+href="(\/hash\/([a-fA-F0-9]{40})\.html)"[^>]*>([\s\S]*?)<\/a>/);
-    if (!titleMatch) continue;
-    const name = titleMatch[3].replace(/<[^>]+>/g, '').trim();
-    if (!name) continue;
-
-    const sizeMatch = block.match(/文件大小:\s*<b[^>]*>([^<]+)<\/b>/);
-    const dateMatch = block.match(/创建时间:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
-    const hotMatch = block.match(/下载热度:\s*(?:&nbsp;|\s)*<b>([^<]+)<\/b>/);
-
-    items.push({
-      name,
-      size: sizeMatch ? sizeMatch[1].trim() : '',
-      date: dateMatch ? dateMatch[1].trim() : '',
-      hot: hotMatch ? hotMatch[1].trim() : '',
-      magnet: `magnet:?xt=urn:btih:${titleMatch[2]}`,
-      detailUrl: `${domain}${titleMatch[1]}`,
-      source: 'xiaocao',
-    });
-  }
-  return items;
+  return domains.map((d, i) => ({
+    name: `[DEBUG] 第 ${i + 1} 个域名：${d}`,
+    size: '',
+    date: '',
+    magnet: '',
+    detailUrl: '',
+    source: 'xiaocao-debug',
+  }));
 }
 
 // ========== ØMagnet ==========
