@@ -25,6 +25,8 @@
       --card-shadow: 0 1px 3px rgba(0,0,0,0.06);
       --card-shadow-hover: 0 2px 8px rgba(0,0,0,0.1);
       --radius: 8px;
+      --green: #34a853;
+      --red: #ea4335;
       --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
     }
 
@@ -47,6 +49,7 @@
       padding: 60px 0 32px;
       text-align: center;
       transition: padding 0.3s ease;
+      position: relative;
     }
 
     .header.compact { padding: 24px 0 16px; }
@@ -62,6 +65,41 @@
     .logo .zero { color: var(--accent); }
 
     .header.compact .logo { font-size: 22px; margin-bottom: 16px; }
+
+    /* ---------- qBittorrent 齿轮按钮 ---------- */
+    .qb-gear {
+      position: absolute;
+      top: 60px;
+      right: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      height: 34px;
+      padding: 0 12px;
+      font-size: 12.5px;
+      font-family: var(--font);
+      color: var(--text-secondary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 17px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: border-color 0.2s, color 0.2s;
+    }
+
+    .header.compact .qb-gear { top: 24px; }
+
+    .qb-gear:hover { border-color: var(--accent); color: var(--accent); }
+
+    .qb-gear .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--border-hover);
+      flex-shrink: 0;
+    }
+
+    .qb-gear .dot.on { background: var(--green); }
 
     .search-form {
       display: flex;
@@ -95,7 +133,6 @@
     .source-btn .arrow { font-size: 10px; color: var(--text-secondary); transition: transform 0.2s; }
     .source-btn.open .arrow { transform: rotate(180deg); }
 
-    /* ---------- 优化后的源下拉菜单 ---------- */
     .source-menu {
       display: none;
       position: absolute;
@@ -170,7 +207,6 @@
       font-weight: 600;
     }
 
-    /* ---------- 搜索框 ---------- */
     .search-input-wrap { flex: 1; position: relative; }
 
     .search-input {
@@ -296,19 +332,27 @@
       background: #f8f9fa;
       border: 1px solid var(--border);
       border-radius: 6px;
-      cursor: pointer;
       transition: background 0.2s, border-color 0.2s;
       overflow: hidden;
-      text-decoration: none;
-      color: inherit;
-      -webkit-tap-highlight-color: transparent;
     }
 
     .magnet-row:hover { background: #e8f0fe; border-color: #c6dafc; }
     .magnet-row.copied { background: #e6f4ea; border-color: #ceead6; }
 
+    .magnet-link {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex: 1;
+      min-width: 0;
+      text-decoration: none;
+      color: inherit;
+      cursor: pointer;
+      -webkit-tap-highlight-color: transparent;
+    }
+
     .magnet-icon { flex-shrink: 0; color: var(--text-secondary); }
-    .magnet-row.copied .magnet-icon { color: #34a853; }
+    .magnet-row.copied .magnet-icon { color: var(--green); }
 
     .magnet-text {
       font-size: 12px;
@@ -319,10 +363,9 @@
       text-overflow: ellipsis;
     }
 
-    .magnet-row.copied .magnet-text { color: #34a853; }
+    .magnet-row.copied .magnet-text { color: var(--green); }
 
     .magnet-copy-hint {
-      margin-left: auto;
       font-size: 11px;
       color: #9aa0a6;
       flex-shrink: 0;
@@ -332,6 +375,128 @@
     @media (min-width: 769px) {
       .magnet-copy-hint { display: none; }
     }
+
+    /* ---------- qBittorrent 下载按钮 ---------- */
+    .qb-btn {
+      flex-shrink: 0;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      padding: 5px 12px;
+      font-size: 12px;
+      font-family: var(--font);
+      font-weight: 500;
+      color: #fff;
+      background: var(--accent);
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: background 0.2s;
+    }
+
+    .qb-btn:hover:not(:disabled) { background: var(--accent-hover); }
+    .qb-btn:disabled { background: #b0c4de; cursor: not-allowed; }
+    .qb-btn.ok { background: var(--green); }
+    .qb-btn.bad { background: var(--red); }
+
+    /* ---------- 设置弹窗 ---------- */
+    .qb-modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.4);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+    }
+
+    .qb-modal-backdrop.open { display: flex; }
+
+    .qb-modal {
+      background: var(--bg);
+      border-radius: 12px;
+      width: 100%;
+      max-width: 400px;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+
+    .qb-modal-head {
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 16px;
+      font-weight: 600;
+    }
+
+    .qb-modal-body {
+      padding: 16px 20px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .qb-modal-body label {
+      display: grid;
+      gap: 4px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .qb-modal-body input {
+      padding: 8px 12px;
+      font-size: 14px;
+      font-family: var(--font);
+      color: var(--text-primary);
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      outline: none;
+    }
+
+    .qb-modal-body input:focus { border-color: var(--accent); }
+
+    .qb-modal-hint {
+      font-size: 11px;
+      color: #9aa0a6;
+      line-height: 1.5;
+    }
+
+    .qb-modal-msg {
+      font-size: 12px;
+      line-height: 1.5;
+      min-height: 18px;
+    }
+
+    .qb-modal-msg.ok { color: var(--green); }
+    .qb-modal-msg.bad { color: var(--red); }
+
+    .qb-modal-foot {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      padding: 12px 20px;
+      border-top: 1px solid var(--border);
+    }
+
+    .qb-modal-foot button {
+      padding: 7px 16px;
+      font-size: 13px;
+      font-family: var(--font);
+      border-radius: 6px;
+      cursor: pointer;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text-primary);
+    }
+
+    .qb-modal-foot button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    .qb-modal-foot button.primary:hover { background: var(--accent-hover); }
 
     /* ---------- 分页 ---------- */
     .pagination {
@@ -451,6 +616,8 @@
     @media (max-width: 768px) {
       .header { padding: 40px 0 24px; }
       .logo { font-size: 26px; }
+      .qb-gear { top: 40px; height: 30px; padding: 0 10px; font-size: 11.5px; }
+      .header.compact .qb-gear { top: 20px; }
       .search-form { flex-wrap: wrap; }
       .source-dropdown { order: 2; }
       .search-input-wrap { order: 1; flex: 1 0 100%; }
@@ -463,6 +630,10 @@
 <body>
 
   <header class="header" id="header">
+    <button type="button" class="qb-gear" id="qbGear" title="配置 qBittorrent">
+      <span class="dot" id="qbDot"></span>
+      qBittorrent
+    </button>
     <div class="logo"><span class="zero">🧲</span> 磁力搜索</div>
     <form class="search-form" id="searchForm">
       <div class="source-dropdown" id="sourceDropdown">
@@ -538,12 +709,176 @@
     免责声明 · 本站仅聚合第三方搜索结果，不存储任何资源
   </footer>
 
+  <!-- qBittorrent 设置弹窗 -->
+  <div class="qb-modal-backdrop" id="qbModal">
+    <div class="qb-modal">
+      <div class="qb-modal-head">qBittorrent 设置</div>
+      <div class="qb-modal-body">
+        <label>
+          WebUI 地址
+          <input id="qbUrl" type="text" placeholder="https://qb.step.cc.cd" spellcheck="false">
+        </label>
+        <label>
+          用户名
+          <input id="qbUser" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <label>
+          密码
+          <input id="qbPass" type="password" autocomplete="new-password">
+        </label>
+        <div class="qb-modal-hint">
+          地址填你暴露到公网的 qBittorrent WebUI。用户名密码存在本机浏览器，不会上传。
+        </div>
+        <div class="qb-modal-msg" id="qbMsg"></div>
+      </div>
+      <div class="qb-modal-foot">
+        <button id="qbCancel">取消</button>
+        <button class="primary" id="qbSave">保存</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     const API_BASE = '';
 
     // ---------- 默认勾选的源 ----------
     const DEFAULT_SOURCES = ['juniorter'];
 
+    // ---------- qBittorrent 配置 ----------
+    const QB_STORAGE_KEY = 'qb_config';
+    const QB_DEFAULT = { url: 'https://qb.step.cc.cd', user: '', pass: '' };
+    let qbConfig = { ...QB_DEFAULT };
+    // 当前会话里每个磁力的发送状态: magnet -> 'sending' | 'ok' | 'bad'
+    const qbState = new Map();
+
+    function loadQbConfig() {
+      try {
+        const raw = localStorage.getItem(QB_STORAGE_KEY);
+        if (raw) {
+          const c = JSON.parse(raw);
+          qbConfig = { ...QB_DEFAULT, ...c };
+        }
+      } catch (e) { /* 忽略 */ }
+      updateQbDot();
+    }
+
+    function saveQbConfig() {
+      localStorage.setItem(QB_STORAGE_KEY, JSON.stringify(qbConfig));
+      updateQbDot();
+    }
+
+    function updateQbDot() {
+      const dot = document.getElementById('qbDot');
+      if (qbConfig.url && qbConfig.user) {
+        dot.classList.add('on');
+      } else {
+        dot.classList.remove('on');
+      }
+    }
+
+    // ---------- 设置弹窗 ----------
+    const qbModal = document.getElementById('qbModal');
+    const qbUrlInput = document.getElementById('qbUrl');
+    const qbUserInput = document.getElementById('qbUser');
+    const qbPassInput = document.getElementById('qbPass');
+    const qbMsg = document.getElementById('qbMsg');
+
+    function openQbModal() {
+      qbUrlInput.value = qbConfig.url || '';
+      qbUserInput.value = qbConfig.user || '';
+      qbPassInput.value = qbConfig.pass || '';
+      qbMsg.textContent = '';
+      qbMsg.className = 'qb-modal-msg';
+      qbModal.classList.add('open');
+    }
+
+    function closeQbModal() {
+      qbModal.classList.remove('open');
+    }
+
+    document.getElementById('qbGear').addEventListener('click', openQbModal);
+    document.getElementById('qbCancel').addEventListener('click', closeQbModal);
+
+    document.getElementById('qbSave').addEventListener('click', () => {
+      const url = qbUrlInput.value.trim().replace(/\/+$/, '');
+      const user = qbUserInput.value.trim();
+      const pass = qbPassInput.value;
+
+      if (!url) {
+        qbMsg.textContent = '请填写 WebUI 地址';
+        qbMsg.className = 'qb-modal-msg bad';
+        return;
+      }
+
+      qbConfig = { url, user, pass };
+      saveQbConfig();
+      qbMsg.textContent = '已保存';
+      qbMsg.className = 'qb-modal-msg ok';
+      setTimeout(closeQbModal, 600);
+    });
+
+    // 点背景关闭
+    qbModal.addEventListener('click', (e) => {
+      if (e.target === qbModal) closeQbModal();
+    });
+
+    // ---------- 推送到 qBittorrent ----------
+    async function pushToQb(magnet, btn) {
+      if (!qbConfig.url || !qbConfig.user) {
+        openQbModal();
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = '发送中…';
+      btn.className = 'qb-btn';
+
+      try {
+        // 登录
+        const loginRes = await fetch(qbConfig.url + '/api/v2/auth/login', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'username=' + encodeURIComponent(qbConfig.user) +
+                '&password=' + encodeURIComponent(qbConfig.pass),
+        });
+        const loginText = (await loginRes.text()).trim();
+        if (loginText !== 'Ok.') {
+          throw new Error('登录失败，检查用户名密码');
+        }
+
+        // 添加磁力
+        const addRes = await fetch(qbConfig.url + '/api/v2/torrents/add', {
+          method: 'POST',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'urls=' + encodeURIComponent(magnet),
+        });
+        const addText = (await addRes.text()).trim();
+        if (addText !== 'Ok.') {
+          throw new Error('添加失败: ' + addText);
+        }
+
+        btn.textContent = '已发送 ✓';
+        btn.className = 'qb-btn ok';
+        btn.disabled = false;
+        setTimeout(() => {
+          btn.textContent = '下载';
+          btn.className = 'qb-btn';
+        }, 3000);
+      } catch (err) {
+        console.error('推送到 qBittorrent 失败:', err);
+        btn.textContent = '失败';
+        btn.className = 'qb-btn bad';
+        btn.disabled = false;
+        setTimeout(() => {
+          btn.textContent = '下载';
+          btn.className = 'qb-btn';
+        }, 3000);
+      }
+    }
+
+    // ---------- 其他变量 ----------
     const header = document.getElementById('header');
     const searchForm = document.getElementById('searchForm');
     const searchInput = document.getElementById('searchInput');
@@ -561,7 +896,7 @@
     let currentSort = 'newest';
     let isLoading = false;
 
-    // ---------- 初始化：按 DEFAULT_SOURCES 勾选 ----------
+    // ---------- 初始化 ----------
     (function initSources() {
       const checkboxes = sourceMenu.querySelectorAll('input[type="checkbox"]');
       checkboxes.forEach(c => {
@@ -569,6 +904,8 @@
       });
       updateSourceLabel();
     })();
+
+    loadQbConfig();
 
     // ---------- 数据源下拉交互 ----------
     sourceBtn.addEventListener('click', (e) => {
@@ -588,7 +925,6 @@
       updateSourceLabel();
     });
 
-    // 全选 / 清空
     document.getElementById('selectAllSources').addEventListener('click', (e) => {
       e.preventDefault();
       sourceMenu.querySelectorAll('input[type="checkbox"]').forEach(c => c.checked = true);
@@ -742,14 +1078,17 @@
               </div>
             </div>
             ${magnet ? `
-              <a class="magnet-row" href="${escapeAttr(magnet)}" data-magnet="${escapeAttr(magnet)}" title="点击打开 / 长按复制">
-                <svg class="magnet-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
-                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
-                </svg>
-                <span class="magnet-text">${escapeHtml(magnet)}</span>
-                <span class="magnet-copy-hint">长按复制</span>
-              </a>
+              <div class="magnet-row" data-magnet="${escapeAttr(magnet)}">
+                <a class="magnet-link" href="${escapeAttr(magnet)}" title="点击打开 / 长按复制">
+                  <svg class="magnet-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
+                  </svg>
+                  <span class="magnet-text">${escapeHtml(magnet)}</span>
+                  <span class="magnet-copy-hint">长按复制</span>
+                </a>
+                <button type="button" class="qb-btn" data-magnet="${escapeAttr(magnet)}">下载</button>
+              </div>
             ` : ''}
           </div>
         `;
@@ -767,8 +1106,10 @@
 
       resultArea.innerHTML = html;
 
-      // 长按复制（短按交给系统处理 magnet: 协议）
+      // 长按复制
       resultArea.querySelectorAll('.magnet-row').forEach(row => {
+        const link = row.querySelector('.magnet-link');
+        if (!link) return;
         let longPressTimer = null;
 
         const start = () => {
@@ -785,14 +1126,23 @@
           }
         };
 
-        row.addEventListener('touchstart', start, { passive: true });
-        row.addEventListener('touchend', cancel);
-        row.addEventListener('touchmove', cancel, { passive: true });
-        row.addEventListener('touchcancel', cancel);
+        link.addEventListener('touchstart', start, { passive: true });
+        link.addEventListener('touchend', cancel);
+        link.addEventListener('touchmove', cancel, { passive: true });
+        link.addEventListener('touchcancel', cancel);
 
-        row.addEventListener('contextmenu', (e) => {
+        link.addEventListener('contextmenu', (e) => {
           e.preventDefault();
           copyMagnetRow(row);
+        });
+      });
+
+      // qBittorrent 下载按钮
+      resultArea.querySelectorAll('.qb-btn').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          e.preventDefault();
+          const magnet = btn.dataset.magnet;
+          if (magnet) pushToQb(magnet, btn);
         });
       });
 
