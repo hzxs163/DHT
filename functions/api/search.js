@@ -13,6 +13,11 @@ const JUNIORTER_PROVIDERS = [
 
 const KNABEN_API = 'https://api.knaben.org/v1';
 
+// U3C3 (cctv10) 域名列表
+const CCTV10_DOMAINS = [
+  'https://u3c3u3c3.u3c3u3c3u3c3.com',
+];
+
 export async function onRequest(context) {
   const { request, waitUntil } = context;
   const url = new URL(request.url);
@@ -20,7 +25,7 @@ export async function onRequest(context) {
   const page = parseInt(url.searchParams.get('page') || '1', 10);
   const sort = url.searchParams.get('sort') || 'relevance';
 
-  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage,hufeng';
+  const sourcesParam = url.searchParams.get('sources') || '0magnet,xiaocao,juniorter,cilibaike,knaben,yuhuage,hufeng,cctv10';
   const sources = sourcesParam.split(',').map(s => s.trim()).filter(Boolean);
 
   if (!query) {
@@ -52,6 +57,9 @@ export async function onRequest(context) {
     }
     if (sources.includes('hufeng')) {
       tasks.push({ name: 'hufeng', promise: fetchFromHufeng(query, page, sort, waitUntil) });
+    }
+    if (sources.includes('cctv10')) {
+      tasks.push({ name: 'cctv10', promise: fetchFromCctv10(query, page, sort, waitUntil) });
     }
 
     const results = await Promise.allSettled(tasks.map(t => t.promise));
@@ -118,7 +126,7 @@ function formatBytes(bytes) {
   return `${value.toFixed(2)} ${units[i]}`;
 }
 
-// ========== 读取 domains.json（直接 import，不走 fetch，绕过 Access） ==========
+// ========== 读取 domains.json ==========
 function getDomainsConfig() {
   const data = domainsConfig || {};
   return {
@@ -544,6 +552,71 @@ function parseHufengResults(html, domain) {
       magnet: `magnet:?xt=urn:btih:${infoHash}`,
       detailUrl: `${domain}/${infoHash}.html`,
       source: 'hufeng',
+    });
+  }
+  return items;
+}
+
+// ========== U3C3 (cctv10) ==========
+async function fetchFromCctv10(query, page, sort, waitUntil) {
+  const searchPath = `/?search2=uowt4hvn&search=${encodeURIComponent(query)}&p=${page}`;
+
+  for (const domain of CCTV10_DOMAINS) {
+    try {
+      const html = await fetchWithCache(`${domain}${searchPath}`, 3600, waitUntil);
+      if (!html.includes('torrent-list')) continue;
+      const items = parseCctv10Results(html, domain);
+      if (items.length > 0) return items;
+    } catch (err) {
+      console.error(`Cctv10 domain ${domain} failed:`, err);
+    }
+  }
+  return [];
+}
+
+function parseCctv10Results(html, domain) {
+  const items = [];
+  const parts = html.split(/<tr class="default">/);
+  for (let i = 1; i < parts.length; i++) {
+    const block = parts[i];
+
+    // magnet 链接：<a href="magnet:?xt=urn:btih:xxx&tr=...">
+    const magnetMatch = block.match(/href="(magnet:\?xt=urn:btih:([a-fA-F0-9]{40})[^"]*)"/);
+    if (!magnetMatch) continue;
+    const magnet = simplifyMagnet(magnetMatch[1]);
+    const infoHash = magnetMatch[2];
+
+    // 标题：<a href="/view?id=...">...</a>
+    const titleMatch = block.match(/<a href="\/view\?id=[^"]+"[^>]*>([\s\S]*?)<\/a>/);
+    if (!titleMatch) continue;
+    let name = titleMatch[1]
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!name) continue;
+
+    // 大小、日期：从 <td class="text-center"> 里提
+    const tds = block.match(/<td[^>]*>([\s\S]*?)<\/td>/g) || [];
+    let size = '';
+    let date = '';
+    for (const td of tds) {
+      const content = td.replace(/<[^>]+>/g, '').trim();
+      if (!size && /^\d+(\.\d+)?\s*(B|KB|MB|GB|TB)$/i.test(content)) {
+        size = content;
+      }
+      if (!date && /^\d{4}-\d{2}-\d{2}\s+\d{2}:\d{2}:\d{2}$/.test(content)) {
+        date = content;
+      }
+    }
+
+    items.push({
+      name,
+      size,
+      date,
+      magnet,
+      detailUrl: `${domain}/view?id=${infoHash}`,
+      source: 'cctv10',
     });
   }
   return items;
