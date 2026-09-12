@@ -13,6 +13,9 @@ const JUNIORTER_PROVIDERS = [
 
 const KNABEN_API = 'https://api.knaben.org/v1';
 
+// cctv10 调试用全局
+let CCTV10_DEBUG = {};
+
 export async function onRequest(context) {
   const { request, waitUntil } = context;
   const url = new URL(request.url);
@@ -26,6 +29,8 @@ export async function onRequest(context) {
   if (!query) {
     return jsonResponse({ error: 'Missing query parameter' }, 400);
   }
+
+  CCTV10_DEBUG = {};
 
   const startTime = Date.now();
 
@@ -96,13 +101,14 @@ export async function onRequest(context) {
         sources: sources,
         page: page,
         totalBeforeDedup: allItems.length,
+        cctv10Raw: CCTV10_DEBUG,
         ...debug,
       },
     });
 
   } catch (err) {
     console.error('Search error:', err);
-    return jsonResponse({ error: 'Search failed', detail: String(err) }, 502);
+    return jsonResponse({ error: 'Search failed', detail: String(err), cctv10Raw: CCTV10_DEBUG }, 502);
   }
 }
 
@@ -557,14 +563,18 @@ function parseHufengResults(html, domain) {
 async function fetchFromCctv10(query, page, sort, waitUntil) {
   const config = getDomainsConfig();
   const domains = config.cctv10;
+  CCTV10_DEBUG.domains = domains;
+  CCTV10_DEBUG.query = query;
+
   if (domains.length === 0) return [];
 
   for (const domain of domains) {
     try {
       // 1) 请求首页，从 JS 里提取当前 search2
       const homeHtml = await fetchWithCache(`${domain}/`, 300, waitUntil);
-      console.log(`Cctv10: homeHtml length=${homeHtml.length}`);
-      console.log(`Cctv10: homeHtml has nmefafej=${homeHtml.includes('nmefafej')}`);
+      CCTV10_DEBUG.homeLen = homeHtml.length;
+      CCTV10_DEBUG.homeHasNmefafej = homeHtml.includes('nmefafej');
+      CCTV10_DEBUG.homeHasSearch2 = homeHtml.includes('search2');
 
       let search2 = null;
       let m = homeHtml.match(/nmefafej\s*=\s*["']([a-zA-Z0-9]+)["']/);
@@ -574,28 +584,32 @@ async function fetchFromCctv10(query, page, sort, waitUntil) {
         if (m) search2 = m[1];
       }
 
+      CCTV10_DEBUG.search2 = search2;
+
       if (!search2) {
-        console.error(`Cctv10: no search2 found on ${domain}`);
-        console.log(`Cctv10: homeHtml head=${homeHtml.slice(0, 500)}`);
+        CCTV10_DEBUG.error = 'no search2 found';
+        CCTV10_DEBUG.homeHead = homeHtml.slice(0, 1000);
         continue;
       }
-      console.log(`Cctv10: search2=${search2}`);
 
       // 2) 用当前 search2 搜
       const searchPath = `/?search2=${search2}&search=${encodeURIComponent(query)}`;
       const searchUrl = `${domain}${searchPath}`;
-      console.log(`Cctv10: searchUrl=${searchUrl}`);
+      CCTV10_DEBUG.searchUrl = searchUrl;
 
       const html = await fetchWithCache(searchUrl, 3600, waitUntil);
-      console.log(`Cctv10: searchHtml length=${html.length}`);
-      console.log(`Cctv10: searchHtml has torrent-list=${html.includes('torrent-list')}`);
-      console.log(`Cctv10: searchHtml head=${html.slice(0, 500)}`);
+      CCTV10_DEBUG.searchLen = html.length;
+      CCTV10_DEBUG.searchHasTorrentList = html.includes('torrent-list');
+      CCTV10_DEBUG.searchHead = html.slice(0, 500);
 
       if (!html.includes('torrent-list')) continue;
       const items = parseCctv10Results(html, domain);
-      console.log(`Cctv10: parsed ${items.length} items`);
+      CCTV10_DEBUG.parsedCount = items.length;
+      CCTV10_DEBUG.firstItem = items.length > 0 ? items[0].name : null;
+
       if (items.length > 0) return items;
     } catch (err) {
+      CCTV10_DEBUG.error = String(err);
       console.error(`Cctv10 domain ${domain} failed:`, err);
     }
   }
