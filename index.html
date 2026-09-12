@@ -695,12 +695,17 @@
   <main class="main" id="main">
     <div class="hot-searches" id="hotSearches">
       <div class="label">热 门 搜 索</div>
-      <div class="hot-tags">
-        <a class="hot-tag" href="javascript:void(0)" data-q="CorelDRAW">CorelDRAW</a>
-        <a class="hot-tag" href="javascript:void(0)" data-q="Photoshop">Photoshop</a>
-        <a class="hot-tag" href="javascript:void(0)" data-q="Office">Office</a>
-        <a class="hot-tag" href="javascript:void(0)" data-q="Windows">Windows</a>
-        <a class="hot-tag" href="javascript:void(0)" data-q="AutoCAD">AutoCAD</a>
+      <div class="hot-tags" id="hotTags">
+        <a class="hot-tag" href="javascript:void(0)" data-q="抓特务">抓特务</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="欧盟制造">欧盟制造</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="歪心狼对阵ACME">歪心狼对阵ACME</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="银魂 吉原大炎上">银魂 吉原大炎上</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="凤仙花">凤仙花</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="求救信号">求救信号</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="一切从头来过">一切从头来过</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="一直在这里">一直在这里</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="战时离婚指南">战时离婚指南</a>
+        <a class="hot-tag" href="javascript:void(0)" data-q="夜巡毒枭">夜巡毒枭</a>
       </div>
     </div>
 
@@ -760,7 +765,7 @@
 
     // ---------- qBittorrent ----------
     const QB_STORAGE_KEY = 'qb_config';
-    const QB_DEFAULT = { url: 'https://127.0.0.1:8080', user: '', pass: '' };
+    const QB_DEFAULT = { url: 'https://qb.step.cc.cd', user: '', pass: '' };
     let qbConfig = { ...QB_DEFAULT };
 
     function loadQbConfig() {
@@ -1211,6 +1216,36 @@
     function escapeRegExp(str) {
       return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     }
-  </script>
+  
+    // ---------- 热门搜索词：豆瓣一周口碑榜（前端实时拉取） ----------
+    (async function loadHotTags() {
+      const hotTagsEl = document.getElementById('hotTags');
+      if (!hotTagsEl) return;
+      try {
+        const res = await fetch(API_BASE + '/api/douban-weekly?limit=10', { cache: 'no-store' });
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const json = await res.json();
+        const list = (json && json.data) || [];
+        if (!list.length) return; // 拉不到就保留兜底静态词
+        hotTagsEl.replaceChildren();
+        list.forEach(item => {
+          const a = document.createElement('a');
+          a.className = 'hot-tag';
+          a.href = 'javascript:void(0)';
+          a.dataset.q = item.title;
+          a.textContent = item.title;
+          a.addEventListener('click', () => {
+            searchInput.value = item.title;
+            updateClearBtn();
+            doSearch(item.title, 1);
+          });
+          hotTagsEl.appendChild(a);
+        });
+      } catch (e) {
+        // 静默失败，保留页面内置的兜底热词
+        console.warn('热词加载失败，使用兜底数据:', e);
+      }
+    })();
+</script>
 </body>
 </html>
