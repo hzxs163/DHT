@@ -502,7 +502,7 @@ async function fetchFromHufeng(query, page, sort, waitUntil) {
   const domains = config.hufeng;
   if (domains.length === 0) return [];
 
-  const searchPath = `/search/${encodeURIComponent(query)}-${page}.html`;
+  const searchPath = `/search/${encodeURIComponent(query)}_ctime_${page}.html`;
 
   for (const domain of domains) {
     try {
