@@ -13,6 +13,7 @@ import json
 import re
 import ssl
 import time
+import urllib.error
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -268,8 +269,9 @@ def extract_hufeng_domains():
 # ========== 雨花阁域名提取 ==========
 def extract_yuhuage_domains():
     """
-    雨花阁永久入口 iyuhuage.fun 是 HTTP 301/302 跳转，
-    请求后 urllib 会自动跟随，resp.geturl() 就是当前落地域名。
+    雨花阁永久入口 iyuhuage.fun 是 Apache 302 跳转，
+    请求后 urllib 自动跟随，resp.geturl() 就是落地域名。
+    注意：不要带 Referer，否则 Apache 会返回 403。
     """
     domains = set()
 
@@ -282,7 +284,8 @@ def extract_yuhuage_domains():
     for entry in YUHUAGE_ENTRY_URLS:
         print(f'[雨花阁] 请求入口: {entry}')
         try:
-            req = urllib.request.Request(entry, headers={**browser_headers, 'Referer': entry + '/'})
+            # 不传 Referer
+            req = urllib.request.Request(entry, headers=browser_headers)
             with urllib.request.urlopen(req, timeout=20) as resp:
                 final_url = resp.geturl()
                 html = resp.read().decode('utf-8', errors='replace')
@@ -301,6 +304,20 @@ def extract_yuhuage_domains():
                 if mm:
                     domains.add(mm.group(1))
 
+            # 3) 兜底：从 HTML 里找 JS 跳转目标
+            for m in re.findall(r'(?:location\.href|location\.replace)\s*[=(]\s*["\']([^"\']+)', html, re.I):
+                mm = re.match(r'(https?://[^/]+)', m)
+                if mm:
+                    domains.add(mm.group(1))
+
+        except urllib.error.HTTPError as e:
+            # 403/301/302 时 Location 头可能仍有值
+            print(f'[雨花阁] HTTP {e.code}，尝试从 Location 头拿跳转')
+            loc = e.headers.get('Location')
+            if loc:
+                m = re.match(r'(https?://[^/]+)', loc)
+                if m:
+                    domains.add(m.group(1))
         except Exception as e:
             print(f'[雨花阁] 入口 {entry} 失败: {e}')
 
