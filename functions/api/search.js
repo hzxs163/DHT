@@ -199,8 +199,16 @@ async function getDomainsConfig(request) {
   try {
     const domainsUrl = new URL('/domains.json', request.url);
     const res = await fetch(domainsUrl.toString());
+
+    // ---- 临时调试：看 /domains.json 的响应状态和类型 ----
+    console.log(`[domains] status=${res.status} ct=${res.headers.get('content-type')} url=${domainsUrl.toString()}`);
+
     if (res.ok) {
       const data = await res.json();
+
+      // ---- 临时调试：看读到的 xiaocao 列表 ----
+      console.log(`[domains] xiaocao=${JSON.stringify(data.xiaocao)}`);
+
       return {
         xiaocao: Array.isArray(data.xiaocao) ? data.xiaocao : [],
         cilibaike: Array.isArray(data.cilibaike) ? data.cilibaike : [],
@@ -463,7 +471,6 @@ function extractMagnetFrom0Magnet(html) {
 
 // ========== 雨花阁 ==========
 async function fetchFromYuhuage(query, page, sort, waitUntil) {
-  // 排序映射：默认 / time / size / filenums / views / active
   let sortSuffix = '';
   switch (sort) {
     case 'time':
@@ -491,7 +498,6 @@ function parseYuhuageResults(html) {
   for (let i = 1; i < parts.length; i++) {
     const block = parts[i];
 
-    // 标题 + hash
     const titleMatch = block.match(/<h3><a[^>]+href="\/hash\/([a-fA-F0-9]{40})\.html"[^>]*>([\s\S]*?)<\/a><\/h3>/);
     if (!titleMatch) continue;
 
@@ -506,13 +512,9 @@ function parseYuhuageResults(html) {
       .trim();
     if (!name) continue;
 
-    // 大小
     const sizeMatch = block.match(/大小：<b[^>]*>([^<]+)<\/b>/);
-    // 创建时间
     const dateMatch = block.match(/创建时间：<b>\s*([^<]+)<\/b>/);
-    // 文件数量
     const fileMatch = block.match(/文件数量：<b[^>]*>([^<]+)<\/b>/);
-    // 热度
     const hotMatch = block.match(/热度：<b>([^<]+)<\/b>/);
 
     items.push({
@@ -539,7 +541,6 @@ async function fetchFromHufeng(query, page, sort, request, waitUntil) {
     return [];
   }
 
-  // 排序映射：ctime / length / click
   let sortParam = 'ctime';
   switch (sort) {
     case 'length': sortParam = 'length'; break;
